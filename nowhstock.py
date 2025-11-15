@@ -41,7 +41,7 @@ class Config:
     SALES_DAYS_WINDOW = 30
     
     # UI
-    PAGE_TITLE = "NO WH INVENTORY PULSE"
+    PAGE_TITLE = "Inventory Pulse NO_WH"
     PAGE_ICON = "https://melcom.com/media/favicon/stores/1/faviconn_162_x_184px.jpg"
     LOGO_URL = "https://melcom.com/media/favicon/stores/1/faviconn_162_x_184px.jpg"
 
@@ -601,13 +601,49 @@ def generate_recommendations(df: pd.DataFrame, use_grn_logic: bool = True) -> pd
             dest_stock = 0 if pd.isna(dest_stock) else dest_stock
             dest_sales = 0 if pd.isna(dest_sales) else dest_sales
 
-            # Get destination last GRN date (for reference only, not for filtering)
+            # Get destination last GRN date
             dest_last_grn = pd.NaT
             if not drow.empty:
                 if 'LAST_GRN_DATE_DST' in drow.columns:
                     dest_last_grn = drow['LAST_GRN_DATE_DST'].iloc[0]
                 elif 'LAST_GRN_DATE' in drow.columns:
                     dest_last_grn = drow['LAST_GRN_DATE'].iloc[0]
+            
+            # Calculate destination GRN age
+            dest_grn_age_days = 0
+            if pd.notna(dest_last_grn):
+                dest_grn_age_days = (today - pd.Timestamp(dest_last_grn).date()).days
+            
+            # 🚫 NEW RULE 1: Block if source and destination are the same shop
+            skip_transfer = False
+            skip_reason = ''
+            
+            if src_shop == dest_shop:
+                skip_transfer = True
+                skip_reason = ''  # Keep blank as requested
+                logger.info(f"⏭️ Blocking {item} {src_shop}→{dest_shop}: Same shop")
+            
+            # 🚫 NEW RULE 2: Block if source shop is a priority shop
+            if not skip_transfer and src_shop in Config.PRIORITY_SHOPS:
+                skip_transfer = True
+                skip_reason = 'These are priority shop'
+                logger.info(f"⏭️ Blocking {item} {src_shop}→{dest_shop}: Source is priority shop")
+            
+            # 🚫 NEW RULE 3: Block if both sales are zero
+            if not skip_transfer and src_sales == 0 and dest_sales == 0:
+                # Check if source GRN is N/A
+                if pd.isna(src_last_grn):
+                    skip_transfer = True
+                    skip_reason = 'GRN not available'
+                    logger.info(f"⏭️ Blocking {item} {src_shop}→{dest_shop}: Source GRN N/A")
+                elif src_grn_age_days > 30 and dest_grn_age_days > 30:
+                    skip_transfer = True
+                    skip_reason = 'src & dest shop has zero sales'
+                    logger.info(f"⏭️ Blocking {item} {src_shop}→{dest_shop}: {skip_reason}")
+                elif src_grn_age_days < 30 or dest_grn_age_days < 30:
+                    skip_transfer = True
+                    skip_reason = 'Latest GRN'
+                    logger.info(f"⏭️ Blocking {item} {src_shop}→{dest_shop}: {skip_reason} (src GRN: {src_grn_age_days}d, dest GRN: {dest_grn_age_days}d)")
             
             # Calculate base recommended qty using existing logic
             base_recommended_qty = 0
@@ -654,7 +690,10 @@ def generate_recommendations(df: pd.DataFrame, use_grn_logic: bool = True) -> pd
                 logger.info(f"⚠️ {item} → {dest_shop}: Would cause overstocking (current: {dest_stock}, allocated: {already_allocated}, total: {current_total_stock}/30)")
             
             # Cap recommended qty to available capacity and available stock
-            if will_overstock:
+            # If transfer is blocked by new rule, set qty to 0
+            if skip_transfer:
+                capped_recommended_qty = 0
+            elif will_overstock:
                 capped_recommended_qty = 0
             else:
                 capped_recommended_qty = min(base_recommended_qty, available_capacity, available)
@@ -677,16 +716,16 @@ def generate_recommendations(df: pd.DataFrame, use_grn_logic: bool = True) -> pd
             final_stock_inhand_days = (dest_updated_stock / dest_sales * 30) if dest_sales > 0 else 0
             final_stock_inhand_days = np.round(final_stock_inhand_days, 1)
 
-            # Set remark: show transfer type, capacity info, or overstocking warning
-            if will_overstock:
-                remark = 'Transfer will cause overstocking'
+            # Set remark: show transfer type, capacity info, or blocking reason
+            if skip_transfer:
+                remark = f'❌ Not recommended: {skip_reason}'
+            elif will_overstock:
+                remark = '❌ Transfer will cause overstocking'
             elif recommended_qty == 0:
                 remark = ''
             else:
                 transfer_type = 'Priority transfer' if dest_shop in Config.PRIORITY_SHOPS else 'Normal transfer'
-                new_total = already_allocated + recommended_qty
-                capacity_msg = f" ({new_total}/30)" if dest_sales == 0 and new_total > 0 else ""
-                remark = f"{transfer_type}{capacity_msg}"
+                remark = f"{transfer_type}"
 
             recs.append({
                 'ITEM_CODE': item,
@@ -801,31 +840,196 @@ def convert_to_excel(slow_df, fast_df, final_df, filters_used):
 # ============================================================
 
 def render_header():
-    """Render header with logo centered"""
+    """Render header with logo centered - responsive"""
     st.markdown(f"""
         <style>
+        /* Main app background */
+        .stApp {{
+            background: linear-gradient(180deg, #f8f9fa 0%, #e9ecef 100%);
+        }}
+        
+        /* Sidebar styling */
+        [data-testid="stSidebar"] {{
+            background: linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%);
+        }}
+        
+        /* Hide Streamlit branding */
+        #MainMenu {{visibility: hidden;}}
+        footer {{visibility: hidden;}}
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {{
+            width: 10px;
+            height: 10px;
+        }}
+        ::-webkit-scrollbar-track {{
+            background: #f1f1f1;
+            border-radius: 10px;
+        }}
+        ::-webkit-scrollbar-thumb {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+        }}
+        ::-webkit-scrollbar-thumb:hover {{
+            background: #764ba2;
+        }}
+        
+        /* Metric cards enhancement */
+        [data-testid="stMetricValue"] {{
+            font-size: 28px;
+            font-weight: bold;
+            color: #667eea;
+        }}
+        
+        /* Selectbox/Dropdown styling - Fix visibility and size */
+        .stSelectbox label {{
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }}
+        
+        .stSelectbox > div > div {{
+            background-color: white;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            font-size: 15px;
+        }}
+        
+        .stSelectbox [data-baseweb="select"] {{
+            background-color: white;
+        }}
+        
+        .stSelectbox [data-baseweb="select"] > div {{
+            background-color: white;
+            border-color: #667eea;
+            font-size: 15px;
+            color: #333;
+        }}
+        
+        /* Number input styling */
+        .stNumberInput label {{
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }}
+        
+        .stNumberInput input {{
+            font-size: 15px;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+        }}
+        
+        /* Checkbox styling */
+        .stCheckbox label {{
+            font-size: 15px;
+            font-weight: 500;
+            color: #333;
+        }}
+        
+        /* Text input styling */
+        .stTextInput label {{
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }}
+        
+        .stTextInput input {{
+            font-size: 15px;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+        }}
+        
+        /* Caption text - make larger */
+        .stCaptionContainer {{
+            font-size: 14px !important;
+        }}
+        
+        /* Improve main content width */
+        .main .block-container {{
+            max-width: 1400px;
+            padding-left: 2rem;
+            padding-right: 2rem;
+        }}
+        
+        /* Button styling */
+        .stButton > button {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 24px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }}
+        
+        .stButton > button:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }}
+        
+        /* Download button */
+        .stDownloadButton > button {{
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-weight: 600;
+            box-shadow: 0 4px 15px rgba(79, 172, 254, 0.3);
+        }}
+        
+        .stDownloadButton > button:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(79, 172, 254, 0.4);
+        }}
+        
         .melcom-logo {{
             width: 60px;
             height: 60px;
-            margin-right: 10px;
+            margin-right: 15px;
+            filter: drop-shadow(0 0 10px rgba(255,255,255,0.8));
+            animation: pulse 2s ease-in-out infinite;
         }}
+        
+        @keyframes pulse {{
+            0%, 100% {{ transform: scale(1); }}
+            50% {{ transform: scale(1.05); }}
+        }}
+        
         .title-container {{
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 8px;
-            border-radius: 6px;
-            text-shadow: 0 0 8px #1E90FF;
-            color: #1662b5;
+            padding: 20px;
+            border-radius: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
             font-family: 'Segoe UI', sans-serif;
             font-weight: 700;
-            font-size: 24px;
+            font-size: 28px;
             margin-bottom: 30px;
+            flex-wrap: wrap;
+            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }}
+        
+        @media (max-width: 768px) {{
+            .melcom-logo {{
+                width: 40px;
+                height: 40px;
+                margin-right: 8px;
+            }}
+            .title-container {{
+                font-size: 18px;
+                padding: 15px;
+                margin-bottom: 15px;
+            }}
         }}
         </style>
         <div class="title-container">
             <img src="{Config.LOGO_URL}" alt="Logo" class="melcom-logo" />
-            MELCOM NO_WH Inventory Pulse
+             MELCOM Inventory Pulse NO_WH
         </div>
     """, unsafe_allow_html=True)
 
@@ -833,39 +1037,76 @@ def render_login():
     """Render login page: Employee ID above Password in a centered narrow column.
 
     The Login button is left-aligned under the password field.
+    Press Enter to login functionality enabled.
     """
-    st.title("🔐 Melcom Access Portal")
+    
+    # Custom styling for login page
+    st.markdown("""
+        <style>
+        .login-header {
+            text-align: center;
+            padding: 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 15px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+        }
+        .login-header h1 {
+            color: white;
+            font-size: 32px;
+            margin: 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .login-header p {
+            color: rgba(255,255,255,0.9);
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        </style>
+        <div class="login-header">
+            <h1>🔐 Melcom Inventory Pulse</h1>
+            <p>Secure Access Portal</p>
+        </div>
+    """, unsafe_allow_html=True)
 
     # Create a centered narrow column to reduce input width
     left_col, center_col, right_col = st.columns([1, 0.6, 1])
     with center_col:
-        employee_id = st.text_input("Employee ID")
-        password = st.text_input("Password", type="password")
+        # Use form to enable Enter key submission
+        with st.form(key="login_form", clear_on_submit=False):
+            employee_id = st.text_input("👤 Employee ID")
+            password = st.text_input("🔑 Password", type="password")
 
-        # Left-aligned login button beneath the inputs
-        btn_col1, btn_col2 = st.columns([1, 3])
-        with btn_col1:
-            if st.button("Login", key="login_btn"):
+            # Left-aligned login button beneath the inputs
+            btn_col1, btn_col2 = st.columns([1, 3])
+            with btn_col1:
+                login_clicked = st.form_submit_button("Login", use_container_width=True)
+            with btn_col2:
+                st.write("")
+            
+            # Handle login when button clicked or Enter pressed
+            if login_clicked:
                 if not employee_id or not password:
                     st.warning("⚠️ Enter both Employee ID and Password")
-                    return
-
-                with st.spinner("Authenticating..."):
-                    user = authenticate_user(employee_id, password)
-
-                if user:
-                    st.session_state.logged_in = True
-                    st.session_state.user = user
-                    st.success(f"✅ Welcome, {user['full_name']}")
-                    st.rerun()
                 else:
-                    st.error("❌ Invalid credentials")
-        with btn_col2:
-            st.write("")
+                    with st.spinner("Authenticating..."):
+                        user = authenticate_user(employee_id, password)
+
+                    if user:
+                        st.session_state.logged_in = True
+                        st.session_state.user = user
+                        st.success(f"✅ Welcome, {user['full_name']}")
+                        st.rerun()
+                    else:
+                        st.error("❌ Invalid credentials")
 
 def render_base_filters(filter_df: pd.DataFrame) -> Tuple[str, str, str, str]:
     """Render base filters in the sidebar (Groups, Sub Group, Product Code, Shop Code)"""
-    st.sidebar.header("🔍 Inventory Filters")
+    st.sidebar.markdown("""
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 12px; border-radius: 8px; text-align: center; color: white; margin-bottom: 15px;">
+            <div style="font-size: 16px; font-weight: bold;">🔍 Inventory Filters</div>
+        </div>
+    """, unsafe_allow_html=True)
     
     def add_all(options):
         return ['All'] + sorted(list(set([str(x).strip() for x in options if x and str(x).strip()])))
@@ -897,13 +1138,16 @@ def render_base_filters(filter_df: pd.DataFrame) -> Tuple[str, str, str, str]:
     return group, subgroup, product, shop
 
 def render_sit_filters(sit_filter_df: pd.DataFrame) -> Tuple[str, str, str]:
-    """Render SIT item-details filters on the main page"""
-    st.subheader("📦 Item Details Filters")
+    """Render SIT item-details filters on the main page - responsive"""
+    st.markdown("""
+        <h3 style="color: #667eea; margin: 25px 0 15px 0; font-size: 22px;">📦 Item Details Filters</h3>
+    """, unsafe_allow_html=True)
     
     def add_all(options):
         return ['All'] + sorted(list(set([str(x).strip() for x in options if x and str(x).strip()])))
     
-    col1, col2, col3 = st.columns(3)
+    # Use responsive columns - will stack on mobile
+    col1, col2, col3 = st.columns([1, 1, 1])
     
     with col1:
         item_type_opts = sit_filter_df['type'].dropna().unique() if not sit_filter_df.empty else []
@@ -957,6 +1201,70 @@ def main():
         layout="wide"
     )
     
+    # Add responsive CSS
+    st.markdown("""
+        <style>
+        /* Mobile-first responsive design */
+        @media (max-width: 768px) {
+            .stButton > button {
+                width: 100%;
+                margin: 5px 0;
+            }
+            .row-widget.stSelectbox {
+                width: 100%;
+            }
+            div[data-testid="column"] {
+                width: 100% !important;
+                flex: 1 1 100% !important;
+                min-width: 100% !important;
+            }
+            .stDataFrame {
+                overflow-x: auto;
+            }
+            h1, h2, h3 {
+                font-size: 1.2rem !important;
+            }
+        }
+        
+        @media (min-width: 769px) and (max-width: 1024px) {
+            /* Tablet adjustments */
+            div[data-testid="column"] {
+                padding: 0 0.5rem;
+            }
+        }
+        
+        /* Make tables horizontally scrollable */
+        .dataframe-container {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        /* Improve button visibility on mobile */
+        .stDownloadButton > button {
+            width: 100%;
+        }
+        
+        /* Format dataframe columns properly */
+        .stDataFrame div[data-testid="stDataFrameResizable"] table tbody tr td,
+        .stDataFrame div[data-testid="stDataFrameResizable"] table thead tr th {
+            text-align: center !important;
+        }
+        
+        /* Left align text columns (Item Name, Shop codes, Remark) */
+        .stDataFrame div[data-testid="stDataFrameResizable"] table tbody tr td:nth-child(1),
+        .stDataFrame div[data-testid="stDataFrameResizable"] table tbody tr td:nth-child(2) {
+            text-align: left !important;
+            padding-left: 10px !important;
+        }
+        
+        /* Right align numeric columns */
+        .stDataFrame div[data-testid="stDataFrameResizable"] table tbody tr td:has(div:matches('[0-9]+')) {
+            text-align: right !important;
+            padding-right: 10px !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
     # Session state
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
@@ -976,9 +1284,29 @@ def main():
     # Header
     render_header()
     
+    # Welcome banner
+    st.markdown("""
+        <div style="background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%); padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 5px solid #667eea;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="font-size: 24px;">📊</div>
+                <div>
+                    <div style="font-size: 16px; font-weight: bold; color: #333;">Real-Time Inventory Intelligence</div>
+                    <div style="font-size: 12px; color: #555; margin-top: 3px;">Track stock levels, monitor sales velocity, and optimize inventory distribution</div>
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+    
     # Sidebar
-    st.sidebar.markdown(f"👋 **{user['full_name']}** ({user['employee_id']})")
-    if st.sidebar.button("🚪 Logout", key="logout_btn"):
+    st.sidebar.markdown("""
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 15px; border-radius: 10px; margin-bottom: 20px; text-align: center; color: white;">
+            <div style="font-size: 18px; font-weight: bold; margin-bottom: 5px;">👋 Welcome</div>
+            <div style="font-size: 14px;">{}</div>
+            <div style="font-size: 12px; opacity: 0.9; margin-top: 3px;">ID: {}</div>
+        </div>
+    """.format(user['full_name'], user['employee_id']), unsafe_allow_html=True)
+    
+    if st.sidebar.button("🚪 Logout", key="logout_btn", use_container_width=True):
         st.session_state.logged_in = False
         st.session_state.user = None
         st.rerun()
@@ -1023,18 +1351,23 @@ def main():
     
     # ✅ Show diagnostic information about sales distribution
     st.sidebar.divider()
-    st.sidebar.subheader("📊 Sales Stats")
+    st.sidebar.markdown("""
+        <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); padding: 12px; border-radius: 8px; text-align: center; color: white; margin-bottom: 15px;">
+            <div style="font-size: 16px; font-weight: bold;">📊 Sales Statistics</div>
+        </div>
+    """, unsafe_allow_html=True)
+    
     total_items = len(inventory_df)
     items_with_sales = (inventory_df['ITEM_SALES_30_DAYS'] > 0).sum()
     max_sales = inventory_df['ITEM_SALES_30_DAYS'].max()
     avg_sales = inventory_df['ITEM_SALES_30_DAYS'].mean()
     total_sales_qty = inventory_df['ITEM_SALES_30_DAYS'].sum()
     
-    st.sidebar.metric("Total Records", total_items)
-    st.sidebar.metric("Items with Sales", f"{items_with_sales} ({items_with_sales/total_items*100:.1f}%)")
-    st.sidebar.metric("Total Sales Qty", f"{int(total_sales_qty):,}")
-    st.sidebar.metric("Max 30d Sales", int(max_sales))
-    st.sidebar.metric("Avg 30d Sales", f"{avg_sales:.1f}")
+    st.sidebar.metric("📦 Total Records", total_items)
+    st.sidebar.metric("✅ Items with Sales", f"{items_with_sales} ({items_with_sales/total_items*100:.1f}%)")
+    st.sidebar.metric("📈 Total Sales Qty", f"{int(total_sales_qty):,}")
+    st.sidebar.metric("🎯 Max 30d Sales", int(max_sales))
+    st.sidebar.metric("📊 Avg 30d Sales", f"{avg_sales:.1f}")
     
     # Classify
     inventory_df['Sales_Status'] = np.where(
@@ -1045,34 +1378,82 @@ def main():
     slow_shops = inventory_df[inventory_df['Sales_Status'] == 'Slow']
     fast_shops = inventory_df[inventory_df['Sales_Status'] == 'Fast']
     
-    # Display
-    col1, col2 = st.columns(2)
+    # Display - responsive layout
+    col1, col2 = st.columns([1, 1])  # Equal columns that stack on mobile
     
     with col1:
-        st.subheader(f"📉 Slow Moving Shops (Sales < {threshold})")
+        st.markdown("""
+            <h3 style="color: #f5576c; margin: 20px 0 10px 0; font-size: 24px;">
+                📉 Slow Moving Shops (Sales < {})
+            </h3>
+        """.format(threshold), unsafe_allow_html=True)
         st.caption(f"{len(slow_shops)} records | Total Sales: {int(slow_shops['ITEM_SALES_30_DAYS'].sum()):,}")
         if not slow_shops.empty:
-            st.dataframe(slow_shops, use_container_width=True)
+            st.dataframe(slow_shops, use_container_width=True, height=350)
         else:
-            st.info("No slow-moving items found")
+            st.info("✅ No slow-moving items found")
     
     with col2:
-        st.subheader(f"📈 Fast Moving Shops (Sales >= {threshold})")
+        st.markdown("""
+            <h3 style="color: #10b981; margin: 20px 0 10px 0; font-size: 24px;">
+                📈 Fast Moving Shops (Sales >= {})
+            </h3>
+        """.format(threshold), unsafe_allow_html=True)
         st.caption(f"{len(fast_shops)} records | Total Sales: {int(fast_shops['ITEM_SALES_30_DAYS'].sum()):,}")
         if not fast_shops.empty:
-            st.dataframe(fast_shops, use_container_width=True)
+            st.dataframe(fast_shops, use_container_width=True, height=350)
         else:
             st.info(f"ℹ️ No items with sales >= {threshold}. Try lowering the threshold.")
     
     st.divider()
 
-    # Generate recommendations (centered button for better UX)
-    st.markdown("<div style='text-align:center; margin-top:8px; margin-bottom:8px;'>",
-                unsafe_allow_html=True)
-    col_l, col_c, col_r = st.columns([3, 1, 3])
-    with col_c:
-        gen_clicked = st.button("⚡ Generate Recommendations", key="gen_rec_btn", use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    # Generate recommendations button with trend information
+    col_trend, col_btn = st.columns([0.7, 1.3])
+    
+    with col_trend:
+        # Calculate trend metrics with unique shop and item counts
+        slow_unique_shops = slow_shops['SHOP_CODE'].nunique() if not slow_shops.empty else 0
+        fast_unique_shops = fast_shops['SHOP_CODE'].nunique() if not fast_shops.empty else 0
+        slow_unique_items = slow_shops['ITEM_CODE'].nunique() if not slow_shops.empty else 0
+        fast_unique_items = fast_shops['ITEM_CODE'].nunique() if not fast_shops.empty else 0
+        total_unique_shops = inventory_df['SHOP_CODE'].nunique()
+        slow_pct = (slow_unique_shops / total_unique_shops * 100) if total_unique_shops > 0 else 0
+        fast_pct = (fast_unique_shops / total_unique_shops * 100) if total_unique_shops > 0 else 0
+        
+        st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%); padding: 15px 18px; border-radius: 10px; border-left: 4px solid #667eea;">
+                <div style="font-size: 15px; font-weight: bold; color: #333; margin-bottom: 8px;">📊 Current Inventory Trends</div>
+                <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 130px;">
+                        <div style="font-size: 12px; color: #666;">Slow Moving</div>
+                        <div style="font-size: 22px; font-weight: bold; color: #f5576c;">{slow_unique_shops} <span style="font-size: 13px;">({slow_pct:.1f}%)</span></div>
+                        <div style="font-size: 11px; color: #888; margin-top: 2px;">unique shops</div>
+                    </div>
+                    <div style="flex: 1; min-width: 130px;">
+                        <div style="font-size: 12px; color: #666;">Fast Moving</div>
+                        <div style="font-size: 22px; font-weight: bold; color: #10b981;">{fast_unique_shops} <span style="font-size: 13px;">({fast_pct:.1f}%)</span></div>
+                        <div style="font-size: 11px; color: #888; margin-top: 2px;">unique shops</div>
+                    </div>
+                    <div style="flex: 1; min-width: 130px;">
+                        <div style="font-size: 12px; color: #666;">Transfer Potential</div>
+                        <div style="font-size: 22px; font-weight: bold; color: #667eea;">{len(slow_shops)} <span style="font-size: 13px;">records</span></div>
+                        <div style="font-size: 11px; color: #888; margin-top: 2px;">{slow_unique_items} items</div>
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col_btn:
+        st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)  # Spacing
+        # Center the button with more padding for compact look
+        btn_col1, btn_col2, btn_col3 = st.columns([0.5, 1, 0.5])
+        with btn_col2:
+            gen_clicked = st.button("🎯 Generate Smart Recommendations", key="gen_rec_btn", use_container_width=True, type="primary")
+        st.markdown("""
+            <div style="text-align: center; margin-top: 8px; font-size: 12px; color: #666;">
+                Analyze inventory and suggest optimal transfers
+            </div>
+        """, unsafe_allow_html=True)
 
     if gen_clicked:
         progress_bar = st.progress(0)
@@ -1126,7 +1507,8 @@ def main():
 
             st.dataframe(final_recs, use_container_width=True, height=400)
 
-            col1, col2 = st.columns(2)
+            # Download buttons - stack on mobile
+            col1, col2 = st.columns([1, 1])
             with col1:
                 st.download_button(
                     "📥 Download CSV",
@@ -1156,8 +1538,9 @@ def main():
         }
 
         excel_data = convert_to_excel(slow_shops, fast_shops, final_recs, filters_used)
+        st.markdown("<br>", unsafe_allow_html=True)  # Add spacing
         st.download_button(
-            "📊 Download Excel Report",
+            "📊 Download Excel Report (All Sheets)",
             excel_data,
             f"Inventory_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
