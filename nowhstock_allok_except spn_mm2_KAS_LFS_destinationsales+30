@@ -1131,11 +1131,16 @@ def generate_recommendations_optimized(group: str = 'All', subgroup: str = 'All'
             ),
             wh_grn_sales AS (
                 -- Calculate sales between WH GRN date and WH GRN date + 30 days
+                -- UNION ALL from both sales_2024 and sales_2025 to capture all sales
                 SELECT 
                     TRIM(UPPER(s."ITEM_CODE")) AS item_code,
                     TRIM(UPPER(s."SHOP_CODE")) AS shop_code,
                     SUM(COALESCE(s."QTY", 0)) AS wh_grn_30d_sales
-                FROM sales_2025 s
+                FROM (
+                    SELECT "ITEM_CODE", "SHOP_CODE", "QTY", "DATE_INVOICE" FROM sales_2024
+                    UNION ALL
+                    SELECT "ITEM_CODE", "SHOP_CODE", "QTY", "DATE_INVOICE" FROM sales_2025
+                ) s
                 INNER JOIN item_wh_grn grn ON TRIM(UPPER(s."ITEM_CODE")) = grn.item_code
                 WHERE s."DATE_INVOICE" IS NOT NULL
                   AND s."DATE_INVOICE" >= grn.wh_grn_date
@@ -1228,11 +1233,16 @@ def generate_recommendations_optimized(group: str = 'All', subgroup: str = 'All'
             ),
             wh_grn_sales AS (
                 -- Calculate sales between WH GRN date and WH GRN date + 30 days
+                -- UNION ALL from both sales_2024 and sales_2025 to capture all sales
                 SELECT 
                     TRIM(UPPER(s."ITEM_CODE")) AS item_code,
                     TRIM(UPPER(s."SHOP_CODE")) AS shop_code,
                     SUM(COALESCE(s."QTY", 0)) AS wh_grn_30d_sales
-                FROM sales_2025 s
+                FROM (
+                    SELECT "ITEM_CODE", "SHOP_CODE", "QTY", "DATE_INVOICE" FROM sales_2024
+                    UNION ALL
+                    SELECT "ITEM_CODE", "SHOP_CODE", "QTY", "DATE_INVOICE" FROM sales_2025
+                ) s
                 INNER JOIN item_wh_grn grn ON TRIM(UPPER(s."ITEM_CODE")) = grn.item_code
                 WHERE s."DATE_INVOICE" IS NOT NULL
                   AND s."DATE_INVOICE" >= grn.wh_grn_date
