@@ -12,6 +12,8 @@ import psycopg2
 import io
 import warnings
 import plotly.graph_objects as go
+import time
+import hashlib
 from psycopg2 import pool, Error
 from psycopg2.extras import RealDictCursor
 #from io import BytesIO
@@ -69,6 +71,8 @@ if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 if 'user' not in st.session_state:
     st.session_state.user = None
+if 'rec_cache' not in st.session_state:
+    st.session_state.rec_cache = {}  # In-memory cache for recommendations
 
 # ============================================================
 # DATABASE CONNECTION MANAGEMENT
@@ -80,8 +84,9 @@ def get_connection_pool(dbname: str):
     try:
         return psycopg2.pool.SimpleConnectionPool(
             minconn=1,
-            maxconn=10,
+            maxconn=5,
             dbname=dbname,
+            connect_timeout=5,
             **Config.DB_CONFIG
         )
     except Error as e:
@@ -113,7 +118,7 @@ def get_db_connection(dbname: str):
 # AUTHENTICATION
 # ============================================================
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=True)
 def authenticate_user(employee_id: str, password: str) -> Optional[Dict]:
     """Authenticate user from PostgreSQL users database (cached for speed)"""
     try:
@@ -134,7 +139,6 @@ def authenticate_user(employee_id: str, password: str) -> Optional[Dict]:
                 return dict(row)
     except Exception as e:
         logger.error(f"Authentication error: {e}")
-        return None
         return None
 
 def check_table_access(user: Dict, required_table: str) -> bool:
@@ -161,36 +165,27 @@ def get_data_freshness() -> Dict[str, str]:
         
         # Get latest dates from each table
         with get_db_connection('grndetails') as conn:
-            # Inventory data (nowhstock_tbl_new) - Direct query (SHOP_GRN_DATE is TEXT)
+            # Inventory data (nowhstock_tbl_new) - Simplified query
             try:
                 query_inv = '''
-                    SELECT "SHOP_GRN_DATE" as grn_date, COUNT(*) as cnt
+                    SELECT MAX("SHOP_GRN_DATE") as grn_date
                     FROM nowhstock_tbl_new
                     WHERE "SHOP_GRN_DATE" IS NOT NULL 
                       AND "SHOP_GRN_DATE" != ''
                       AND "SHOP_GRN_DATE" != '0'
-                    GROUP BY "SHOP_GRN_DATE"
-                    ORDER BY "SHOP_GRN_DATE" DESC
-                    LIMIT 1
                 '''
                 result = pd.read_sql(query_inv, conn)
-                logger.info(f"Inventory query result: {result}")
                 if not result.empty and pd.notna(result['grn_date'].iloc[0]):
                     date_str = str(result['grn_date'].iloc[0])
-                    # Try to parse the date
                     try:
                         parsed_date = pd.to_datetime(date_str)
                         freshness['inventory'] = parsed_date.strftime('%d-%b-%Y')
-                        logger.info(f"Inventory date set to: {freshness['inventory']}")
                     except:
-                        freshness['inventory'] = date_str  # Show as-is if can't parse
-                        logger.warning(f"Could not parse inventory date: {date_str}")
-                else:
-                    logger.warning(f"Inventory result empty or null: {result}")
+                        freshness['inventory'] = date_str
             except Exception as e:
-                logger.error(f"Could not get inventory date: {e}", exc_info=True)
+                logger.error(f"Could not get inventory date: {e}")
             
-            # GRN data (sup_shop_grn) - SHOP_GRN_DATE is TIMESTAMP type
+            # GRN data (sup_shop_grn) - Simplified
             try:
                 query_grn = '''
                     SELECT MAX("SHOP_GRN_DATE"::DATE) as latest_date 
@@ -198,18 +193,14 @@ def get_data_freshness() -> Dict[str, str]:
                     WHERE "SHOP_GRN_DATE" IS NOT NULL
                 '''
                 result = pd.read_sql(query_grn, conn)
-                logger.info(f"GRN query result: {result}")
                 if not result.empty and pd.notna(result['latest_date'].iloc[0]):
                     date_val = result['latest_date'].iloc[0]
                     if isinstance(date_val, str):
                         freshness['grn'] = pd.to_datetime(date_val).strftime('%d-%b-%Y')
                     else:
                         freshness['grn'] = date_val.strftime('%d-%b-%Y')
-                    logger.info(f"GRN date set to: {freshness['grn']}")
-                else:
-                    logger.warning(f"GRN result empty or null: {result}")
             except Exception as e:
-                logger.error(f"Could not get GRN date: {e}", exc_info=True)
+                logger.error(f"Could not get GRN date: {e}")
         
         # Sales data (sales_2025 - in salesdata db)
         try:
@@ -235,21 +226,32 @@ def get_data_freshness() -> Dict[str, str]:
         logger.error(f"Error getting data freshness: {e}", exc_info=True)
         return {'inventory': 'Error', 'grn': 'Error', 'sales': 'Error'}
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def load_filter_options() -> pd.DataFrame:
-    """Load distinct filter options from inventory (cached 1 hour)"""
+    """Load distinct filter options with groups/sub_group from itemdetails (cached 5 min)"""
     try:
-        with get_db_connection('grndetails') as conn:
+        with get_db_connection('salesdata') as conn:
             query = '''
-                SELECT DISTINCT "GROUPS", "SUB_GROUP", "ITEM_CODE", "ITEM_NAME", "SHOP_CODE"
-                FROM nowhstock_tbl_new
+                SELECT DISTINCT 
+                    COALESCE(id.groups, im.groupp, 'N/A') AS "GROUPS", 
+                    COALESCE(id.sub_group, im.subgroup, 'N/A') AS "SUB_GROUP", 
+                    im.itemcode AS "ITEM_CODE", 
+                    im.itemname AS "ITEM_NAME", 
+                    im.shopcode AS "SHOP_CODE"
+                FROM inventory_master im
+                LEFT JOIN itemdetails id ON TRIM(UPPER(im.itemcode)) = TRIM(UPPER(id.vc_item_code))
             '''
             df = pd.read_sql(query, conn)
-            logger.info("✅ Loaded filter options (cached)")
+            logger.info(f"✅ Loaded filter options with itemdetails join: {len(df)} records (cached)")
+            
+            if df.empty:
+                st.warning("⚠️ No filter data found in inventory_master table")
+                logger.warning("Filter query returned empty dataframe")
+            
             return df
     except Exception as e:
         logger.error(f"Error loading filters: {e}")
-        st.error(f"❌ Error loading filters: {e}")
+        st.error(f"❌ Database Error: Could not load filter options. Please check database connection.\n\nDetails: {str(e)}")
         return pd.DataFrame()
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -357,61 +359,224 @@ def apply_itemdetails_filters(inventory_df: pd.DataFrame, sit_df: pd.DataFrame, 
 
 @st.cache_data(ttl=900, show_spinner=False)
 def load_last_30d_sales() -> pd.DataFrame:
-    """Load sales from last 30 days (cached 15 min) - optimized query"""
+    """Load sales from last 30 days (cached 15 min) - dynamically handles year overlaps"""
     try:
         end_date = datetime.today() - timedelta(days=1)
         start_date = end_date - timedelta(days=Config.SALES_DAYS_WINDOW - 1)
         
+        # Determine which years to query
+        start_year = start_date.year
+        end_year = end_date.year
+        years_to_query = list(range(start_year, end_year + 1))
+        
+        logger.info(f"📅 Loading 30d sales from {start_date.date()} to {end_date.date()} (years: {years_to_query})")
+        
         with get_db_connection('salesdata') as conn:
-            # Single optimized query - no validation overhead
-            query = """
-                SELECT 
-                    TRIM(UPPER("ITEM_CODE")) AS item_code,
-                    TRIM(UPPER("SHOP_CODE")) AS shop_code,
-                    SUM(COALESCE("QTY", 0))::INT AS sales_30d
-                FROM sales_2025
-                WHERE "DATE_INVOICE"::date BETWEEN %s AND %s
-                GROUP BY 1, 2
-            """
-            sales_df = pd.read_sql(query, conn, params=(start_date.date(), end_date.date()))
+            sales_dfs = []
+            
+            for year in years_to_query:
+                table_name = f"sales_{year}"
+                try:
+                    query = f"""
+                        SELECT 
+                            TRIM(UPPER("ITEM_CODE")) AS item_code,
+                            TRIM(UPPER("SHOP_CODE")) AS shop_code,
+                            SUM(COALESCE("QTY", 0))::INT AS sales_30d
+                        FROM {table_name}
+                        WHERE "DATE_INVOICE"::date BETWEEN %s AND %s
+                        GROUP BY 1, 2
+                    """
+                    year_sales = pd.read_sql(query, conn, params=(start_date.date(), end_date.date()))
+                    sales_dfs.append(year_sales)
+                    logger.info(f"✅ Loaded {len(year_sales)} rows from {table_name}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not load {table_name}: {e}")
+            
+            if not sales_dfs:
+                return pd.DataFrame(columns=["ITEM_CODE", "SHOP_CODE", "SALES_30D"])
+            
+            # Combine all years and aggregate
+            sales_df = pd.concat(sales_dfs, ignore_index=True)
+            sales_df = sales_df.groupby(['item_code', 'shop_code'], as_index=False)['sales_30d'].sum()
         
         sales_df.columns = sales_df.columns.str.upper()
-        logger.info(f"✅ Loaded 30-day sales: {len(sales_df)} rows (cached)")
+        logger.info(f"✅ Total 30-day sales: {len(sales_df)} rows (cached)")
         return sales_df if not sales_df.empty else pd.DataFrame(columns=["ITEM_CODE", "SHOP_CODE", "SALES_30D"])
         
     except Exception as e:
         logger.error(f"Error loading 30-day sales: {e}")
         return pd.DataFrame(columns=["ITEM_CODE", "SHOP_CODE", "SALES_30D"])
 
+@st.cache_data(ttl=900, show_spinner=False)
+def load_shop_grn_sales(shop_code: str = None) -> pd.DataFrame:
+    """
+    Load shop's last 30-day sales based on last WH GRN date from sup_shop_grn.
+    Handles year overlaps dynamically (e.g., Dec 20 GRN spans into next year).
+    
+    CRITICAL FIX: WH GRN date is ITEM-LEVEL (warehouse-level), not shop-specific.
+    The same item has the same WH GRN date across ALL shops.
+    
+    Args:
+        shop_code: Specific shop to load (None = all shops)
+    
+    Returns:
+        DataFrame with columns: ITEM_CODE, SHOP_CODE, SHOP_GRN_SALES_30D
+    """
+    try:
+        with get_db_connection('salesdata') as conn:
+            # CRITICAL: Get WH GRN date PER ITEM ONLY (not per shop)
+            # WH GRN is when warehouse received the item - same for all shops
+            grn_df = pd.read_sql("""
+                SELECT 
+                    TRIM(UPPER(item_code)) AS item_code,
+                    MAX(wh_grn_date) AS wh_last_grn_date
+                FROM sup_shop_grn
+                WHERE wh_grn_date IS NOT NULL
+                GROUP BY 1
+            """, conn)
+            
+            if grn_df.empty:
+                logger.warning(f"⚠️ No GRN data found")
+                return pd.DataFrame(columns=["ITEM_CODE", "SHOP_CODE", "SHOP_GRN_SALES_30D"])
+            
+            # Convert to datetime
+            grn_df["wh_last_grn_date"] = pd.to_datetime(grn_df["wh_last_grn_date"], errors="coerce")
+            grn_df = grn_df[grn_df["wh_last_grn_date"].notna()]
+            
+            if grn_df.empty:
+                logger.warning(f"⚠️ No valid GRN dates after parsing")
+                return pd.DataFrame(columns=["ITEM_CODE", "SHOP_CODE", "SHOP_GRN_SALES_30D"])
+            
+            # Calculate 30 days from WH GRN date
+            grn_df['grn_30d_end'] = grn_df['wh_last_grn_date'] + pd.Timedelta(days=30)
+            
+            logger.info(f"✅ Loaded WH GRN dates for {len(grn_df)} unique items")
+            
+            # Determine years needed
+            grn_years = grn_df['wh_last_grn_date'].dt.year.unique()
+            end_years = grn_df['grn_30d_end'].dt.year.unique()
+            all_years = sorted(set(list(grn_years) + list(end_years)))
+            
+            logger.info(f"📅 WH GRN dates span years: {all_years}")
+            
+            # Apply shop filter if specified
+            shop_filter_sql = ""
+            if shop_code:
+                shop_filter_sql = f"WHERE TRIM(UPPER(\"SHOP_CODE\")) = '{shop_code.upper()}'"
+            
+            # Load sales data from all required years
+            sales_dfs = []
+            for year in all_years:
+                table_name = f"sales_{year}"
+                try:
+                    year_sales_df = pd.read_sql(f"""
+                        SELECT 
+                            TRIM(UPPER("ITEM_CODE")) AS item_code,
+                            TRIM(UPPER("SHOP_CODE")) AS shop_code,
+                            "DATE_INVOICE"::date AS date_invoice,
+                            SUM(COALESCE("QTY", 0)) AS qty
+                        FROM {table_name}
+                        {shop_filter_sql}
+                        GROUP BY 1, 2, 3
+                    """, conn)
+                    
+                    sales_dfs.append(year_sales_df)
+                    logger.info(f"✅ Loaded {len(year_sales_df)} sales records from {table_name}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not load {table_name}: {e}")
+            
+            if not sales_dfs:
+                logger.error("❌ No sales data loaded from any year")
+                return pd.DataFrame(columns=["ITEM_CODE", "SHOP_CODE", "SHOP_GRN_SALES_30D"])
+            
+            # Combine all years
+            sales_df = pd.concat(sales_dfs, ignore_index=True)
+            sales_df["date_invoice"] = pd.to_datetime(sales_df["date_invoice"], errors="coerce")
+            
+            # CRITICAL: Merge on item_code only - WH GRN is item-level
+            # This creates a cross join: each item's WH GRN date × all shops that sold it
+            merged = sales_df.merge(grn_df, on="item_code", how="inner")
+            
+            # Filter sales within 30 days of WH GRN date
+            filtered = merged[
+                (merged["date_invoice"] >= merged["wh_last_grn_date"]) & 
+                (merged["date_invoice"] <= merged["grn_30d_end"])
+            ]
+            
+            logger.info(f"📊 Filtered to {len(filtered)} sales records within WH GRN +30 day window")
+            
+            # Aggregate sales by item-shop
+            result = (
+                filtered.groupby(["item_code", "shop_code"])["qty"]
+                .sum()
+                .reset_index()
+                .rename(columns={"qty": "shop_grn_sales_30d"})
+            )
+            
+            result.columns = result.columns.str.upper()
+            logger.info(f"✅ Calculated WH GRN-based 30d sales for {len(result)} item-shop combinations")
+            return result
+            
+    except Exception as e:
+        logger.error(f"❌ Error loading shop GRN sales: {e}")
+        return pd.DataFrame(columns=["ITEM_CODE", "SHOP_CODE", "SHOP_GRN_SALES_30D"])
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def load_wh_grn_sales() -> pd.DataFrame:
+    """
+    Load WH last 30-day sales based on last GRN date (kept for backward compatibility).
+    Now just calls load_shop_grn_sales() for WHL shop.
+    """
+    result = load_shop_grn_sales('WHL')
+    if not result.empty:
+        # Rename for backward compatibility
+        result = result.rename(columns={"SHOP_GRN_SALES_30D": "WH_GRN_SALES_30D"})
+        result = result.drop(columns=["SHOP_CODE"], errors="ignore")
+    return result
+
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_inventory_data(group: str, subgroup: str, product: str, shop: str) -> pd.DataFrame:
-    """Load inventory data with filters - optimized for speed"""
+    """Load inventory data from optimized inventory_master table with filters
+    
+    OPTIMIZED: Now includes pre-computed WH GRN sales for faster recommendations
+    """
     try:
-        with get_db_connection('grndetails') as conn:
+        with get_db_connection('salesdata') as conn:
             # Build filters
             filters = []
             params = []
             if group and group.strip() != "" and group != "All":
-                filters.append(f'"GROUPS" = %s')
+                filters.append('groupp = %s')
                 params.append(group)
             if subgroup and subgroup.strip() != "" and subgroup != "All":
-                filters.append(f'"SUB_GROUP" = %s')
+                filters.append('subgroup = %s')
                 params.append(subgroup)
             if product and product.strip() != "" and product != "All":
-                filters.append(f'"ITEM_CODE" = %s')
+                filters.append('itemcode = %s')
                 params.append(product)
             if shop and shop.strip() != "" and shop != "All":
-                filters.append(f'"SHOP_CODE" = %s')
+                filters.append('shopcode = %s')
                 params.append(shop)
 
             where_sql = "WHERE " + " AND ".join(filters) if filters else ""
 
-            # Skip MV refresh - use cached view
+            # Use optimized inventory_master table with itemdetails join for groups/sub_group
+            # CRITICAL: whgrn_dt is the WH GRN date (item-level, warehouse received date)
             query = f"""
                 SELECT 
-                    "ITEM_CODE", "ITEM_NAME", "SHOP_CODE",
-                    "SHOP_STOCK", "GROUPS", "SUB_GROUP", "SHOP_GRN_DATE"
-                FROM mv_nowhstock_grn
+                    im.itemcode AS "ITEM_CODE", 
+                    im.itemname AS "ITEM_NAME", 
+                    im.shopcode AS "SHOP_CODE",
+                    im.shopstock AS "SHOP_STOCK", 
+                    COALESCE(id.groups, im.groupp, 'N/A') AS "GROUPS", 
+                    COALESCE(id.sub_group, im.subgroup, 'N/A') AS "SUB_GROUP", 
+                    im.shopgrn_dt AS "SHOP_GRN_DATE",
+                    im.whgrn_dt AS "WH_GRN_DATE",
+                    im.dept AS "DEPARTMENT",
+                    im.sales_30d_wh AS "ITEM_SALES_30_DAYS"
+                FROM inventory_master im
+                LEFT JOIN itemdetails id ON TRIM(UPPER(im.itemcode)) = TRIM(UPPER(id.vc_item_code))
                 {where_sql}
             """
 
@@ -421,16 +586,10 @@ def load_inventory_data(group: str, subgroup: str, product: str, shop: str) -> p
             df['ITEM_CODE'] = df['ITEM_CODE'].str.strip().str.upper()
             df['SHOP_CODE'] = df['SHOP_CODE'].str.strip().str.upper()
             df['SHOP_STOCK'] = pd.to_numeric(df['SHOP_STOCK'], errors='coerce').fillna(0).astype(int)
-        
-        # Merge with cached sales data
-        sales_30d_df = load_last_30d_sales()
-        
-        if not sales_30d_df.empty:
-            df = df.merge(sales_30d_df, on=['ITEM_CODE', 'SHOP_CODE'], how='left')
-            df['ITEM_SALES_30_DAYS'] = df.get('SALES_30D', 0).fillna(0).astype(int)
-            df = df.drop(columns=['SALES_30D'], errors='ignore')
-        else:
-            df['ITEM_SALES_30_DAYS'] = 0
+            df['ITEM_SALES_30_DAYS'] = pd.to_numeric(df.get('ITEM_SALES_30_DAYS', 0), errors='coerce').fillna(0).astype(int)
+            
+            # inventory_master already has sales_30d_wh, no need to merge separately
+            logger.info(f"✅ Loaded {len(df)} records from inventory_master (includes sales data)")
         
         logger.info(f"✅ Loaded {len(df)} inventory records")
         return df
@@ -542,6 +701,7 @@ def calculate_grn_sales() -> pd.DataFrame:
 # RECOMMENDATION ENGINE
 # ============================================================
 
+
 def format_recommendations(df: pd.DataFrame) -> pd.DataFrame:
     """
     Format raw recommendation query results into final output structure.
@@ -564,48 +724,251 @@ def format_recommendations(df: pd.DataFrame) -> pd.DataFrame:
     df['skip_transfer'] = False
     df['skip_reason'] = ''
     
-    # Rule: Block if both source and dest have zero sales
+    # Define priority shops list
+    priority_shops = ['SPN', 'MSS', 'LFS', 'M03', 'KAS', 'MM1', 'MM2', 'FAR', 'KS7', 'WHL', 'MM3']
+    
+    # Rule: Block if source shop is a priority shop (priority shops cannot be sources)
+    source_is_priority = df['source_shop'].isin(priority_shops)
+    df.loc[source_is_priority, 'skip_transfer'] = True
+    df.loc[source_is_priority, 'skip_reason'] = 'Source is priority shop'
+    df.loc[source_is_priority, 'recommended_qty'] = 0
+    
+    # Rule: For zero sales cases, use WH GRN +30d sales as potential indicator
+    # If dest_wh_grn_30d_sales > 0, item has historical demand potential
     zero_both = (df['source_sales'] == 0) & (df['dest_sales'] == 0)
     
-    # Check GRN conditions
-    src_grn_na = zero_both & df['source_last_grn'].isna()
+    # Only block if zero sales AND no historical WH GRN +30d sales potential
+    no_potential = zero_both & (df.get('dest_wh_grn_30d_sales', 0) == 0)
+    
+    # Check GRN conditions only for items with no potential
+    src_grn_na = no_potential & df['source_last_grn'].isna()
     df.loc[src_grn_na, 'skip_transfer'] = True
-    df.loc[src_grn_na, 'skip_reason'] = 'GRN not available'
+    df.loc[src_grn_na, 'skip_reason'] = 'No sales potential & GRN unavailable'
     
-    both_old_grn = zero_both & (df['source_grn_age'] > 30) & (df.get('dest_grn_age', 999) > 30)
+    both_old_grn = no_potential & (df['source_grn_age'] > 30) & (df.get('dest_grn_age', 999) > 30)
     df.loc[both_old_grn, 'skip_transfer'] = True
-    df.loc[both_old_grn, 'skip_reason'] = 'src & dest shop has zero sales'
+    df.loc[both_old_grn, 'skip_reason'] = 'No sales potential & old GRN'
     
-    recent_grn = zero_both & ((df['source_grn_age'] < 30) | (df.get('dest_grn_age', 999) < 30))
+    recent_grn = no_potential & ((df['source_grn_age'] < 30) | (df.get('dest_grn_age', 999) < 30))
     df.loc[recent_grn, 'skip_transfer'] = True
-    df.loc[recent_grn, 'skip_reason'] = 'Latest GRN'
+    df.loc[recent_grn, 'skip_reason'] = 'No sales potential & recent GRN'
     
-    # Set remarks
+    # Rule: Block NORMAL transfers if destination already has >=30 days stock
+    # Formula: (dest_stock / dest_sales) * 30 >= 30
+    # Only check for NON-priority shops
+    df['is_priority_dest'] = df['dest_shop'].isin(priority_shops)
+    
+    # Calculate current stock in hand days for destination
+    dest_has_overstocking = (
+        ~df['is_priority_dest'] &  # Only for normal shops
+        (df['dest_sales'] > 0) &  # Must have sales to calculate
+        ((df['dest_stock'] / df['dest_sales']) * 30 >= 30)  # Already has 30+ days stock
+    )
+    df.loc[dest_has_overstocking, 'skip_transfer'] = True
+    df.loc[dest_has_overstocking, 'skip_reason'] = 'Transfer will cause overstocking'
+    df.loc[dest_has_overstocking, 'recommended_qty'] = 0
+    
+    # Set remarks based on destination shop name (check actual shop, not flag)
     df['remark'] = ''
-    df.loc[~df['skip_transfer'] & (df['is_priority_shop'] == 1), 'remark'] = 'Priority transfer'
-    df.loc[~df['skip_transfer'] & (df['is_priority_shop'] == 0), 'remark'] = 'Normal transfer'
+    
+    # Debug logging to see what shop codes we have
+    if not df.empty and 'dest_shop' in df.columns:
+        unique_shops = df['dest_shop'].unique()
+        logger.info(f"🔍 Found {len(unique_shops)} unique destination shops: {sorted(unique_shops)[:20]}")
+        priority_matches = df[df['dest_shop'].isin(priority_shops)]
+        logger.info(f"🎯 Priority shop matches: {len(priority_matches)} rows matching {priority_shops}")
+        if len(priority_matches) > 0:
+            logger.info(f"   Priority shops found: {priority_matches['dest_shop'].unique()}")
+    
+    # Set remarks: If destination IS a priority shop → Priority transfer
+    # Note: is_priority_dest was already set above in overstocking check
+    df.loc[~df['skip_transfer'] & df['is_priority_dest'], 'remark'] = 'Priority transfer'
+    df.loc[~df['skip_transfer'] & ~df['is_priority_dest'], 'remark'] = 'Normal transfer'
     df.loc[df['skip_transfer'], 'remark'] = '❌ Not recommended: ' + df['skip_reason']
     df.loc[df['skip_transfer'], 'recommended_qty'] = 0
+    
+    # Add priority order for sorting (priority shops get their position, others get 999)
+    priority_order_map = {shop: idx for idx, shop in enumerate(priority_shops)}
+    df['priority_order'] = df['dest_shop'].map(priority_order_map).fillna(999).astype(int)
     
     # Filter out blocked transfers
     df = df[df['recommended_qty'] > 0].copy()
     
+    # Sort: Priority shops first (in order), then by GRN age, then item/destination
+    df = df.sort_values(
+        by=['priority_order', 'source_grn_age', 'item_code', 'dest_shop'],
+        ascending=[True, False, True, True]
+    ).reset_index(drop=True)
+    
+    # Cap recommendations to ensure dest_stock + total_recommended <= 30 (or 30 days stock if sales exist)
+    # For normal shops: cap at 30 units OR 30 days of stock (whichever applies)
+    # For priority shops: cap at 30 units total
+    df['cumulative_qty'] = 0
+    df['capped_to_zero'] = False
+    allocation_tracker = {}
+    
+    for idx, row in df.iterrows():
+        key = (row['item_code'], row['dest_shop'])
+        current_allocated = allocation_tracker.get(key, 0)
+        
+        # Calculate the maximum allowed for this destination
+        if row['is_priority_dest']:
+            # Priority shops: simple 30-unit cap on total recommendations
+            max_total_allowed = 30
+        else:
+            # Normal shops: cap based on dest_stock + recommendations
+            if row['dest_sales'] > 0:
+                # If destination has sales, cap at 30 days of stock
+                max_stock_days = 30
+                max_stock_units = row['dest_sales']  # 30-day sales = 30 days stock
+                max_total_allowed = max(0, max_stock_units - row['dest_stock'])
+            else:
+                # If no sales, cap at 30 units total
+                max_total_allowed = max(0, 30 - row['dest_stock'])
+        
+        # How much more can we allocate?
+        remaining_capacity = max(0, max_total_allowed - current_allocated)
+        allowed_qty = min(row['recommended_qty'], remaining_capacity)
+        original_qty = row['recommended_qty']
+        
+        df.at[idx, 'recommended_qty'] = allowed_qty
+        df.at[idx, 'cumulative_qty'] = current_allocated + allowed_qty
+        allocation_tracker[key] = current_allocated + allowed_qty
+        
+        if allowed_qty == 0 and original_qty > 0:
+            df.at[idx, 'capped_to_zero'] = True
+            shop_type = 'Priority' if row['is_priority_dest'] else 'Normal'
+            if not row['is_priority_dest'] and row['dest_stock'] > 0:
+                df.at[idx, 'remark'] = f'❌ Not recommended: Destination already has sufficient stock'
+            else:
+                df.at[idx, 'remark'] = f'❌ Not recommended: {shop_type} shop limit reached'
+            logger.info(f"⚠️ Capped {row['item_code']} → {row['dest_shop']}: "
+                      f"reduced from {original_qty} to 0 (dest_stock: {row['dest_stock']}, allocated: {current_allocated})")
+        elif allowed_qty < original_qty:
+            logger.info(f"⚠️ Capped {row['item_code']} → {row['dest_shop']}: "
+                      f"reduced from {original_qty} to {allowed_qty} "
+                      f"(dest_stock: {row['dest_stock']}, already allocated: {current_allocated})")
+    
+    # DON'T remove rows that were capped - keep them with qty=0 and remark
+    # Only filter was already done for skip_transfer rows
+    
+    # Recalculate final metrics after capping
+    df['dest_updated_stock'] = df['dest_stock'] + df['recommended_qty']
+    
+    # Calculate destination final stock in hand days
+    # Formula: (dest_updated_stock / dest_sales) * 30, rounded up
+    df['dest_final_stock_days'] = np.where(
+        df['dest_updated_stock'] == 0,
+        0,
+        np.where(
+            (df['dest_stock'] == 0) & (df['dest_sales'] == 0) & (df['recommended_qty'] > 0),
+            df['recommended_qty'],  # If dest has no stock and no sales, show recommended qty
+            np.where(
+                df['dest_sales'] > 0,
+                np.ceil((df['dest_updated_stock'] / df['dest_sales']) * 30),
+                np.where(
+                    (df['dest_stock'] > 0) & (df['dest_sales'] == 0) & (df['recommended_qty'] > 0),
+                    df['dest_updated_stock'],  # If dest has stock but no sales, show updated stock
+                    999
+                )
+            )
+        )
+    )
+    
+    # STEP 4: DEBUG - Check item 168972 BEFORE selecting output columns
+    if 'item_code' in df.columns:
+        debug_item = df[df['item_code'] == '168972']
+        problem_shops = ['SPN', 'LFS', 'FAR', 'MM2', 'KAS']
+        if not debug_item.empty:
+            logger.info(f"\n{'='*80}")
+            logger.info(f"STEP 4: BEFORE OUTPUT COLUMN SELECTION - Item 168972 ({len(debug_item)} total rows)")
+            logger.info(f"{'='*80}")
+            for shop in problem_shops:
+                shop_rows = debug_item[debug_item['dest_shop'] == shop]
+                if not shop_rows.empty:
+                    logger.info(f"\n  DEST={shop}: {len(shop_rows)} rows")
+                    for idx, row in shop_rows.iterrows():
+                        logger.info(f"    Row {idx}: src={row['source_shop']:4s} | dest_wh_grn_30d_sales={row.get('dest_wh_grn_30d_sales', 'N/A'):>6} | rec_qty={row.get('recommended_qty', 'N/A'):>3} | skip={row.get('skip_transfer', 'N/A')}")
+                else:
+                    logger.info(f"\n  DEST={shop}: FILTERED OUT (skip_transfer or recommended_qty=0)")
+            logger.info(f"{'='*80}\n")
+    
     # Format output columns
     result = df[[
         'item_code', 'item_name', 'source_shop', 'source_stock', 'source_sales',
-        'source_last_grn', 'source_grn_age', 'dest_shop', 'dest_stock', 'dest_sales',
+        'source_last_grn', 'source_grn_age', 'source_wh_grn_date', 'dest_shop', 'dest_stock', 'dest_sales',
+        'dest_wh_grn_date', 'dest_wh_grn_plus_30', 'dest_wh_grn_30d_sales',
         'recommended_qty', 'dest_updated_stock', 'dest_final_stock_days', 'remark'
     ]].copy()
     
     result.columns = [
         'ITEM_CODE', 'Item Name', 'Source Shop', 'Source Stock', 'Source Last 30d Sales',
-        'Source Last GRN Date', 'Source GRN Age (days)', 'Destination Shop',
-        'Destination Stock', 'Destination Last 30d Sales', 'Recommended_Qty',
+        'Source Last GRN Date', 'Source GRN Age (days)', 'Source Last WH GRN Date', 'Destination Shop',
+        'Destination Stock', 'Destination Last 30d Sales',
+        'Destination Last WH GRN Date', 'WH GRN +30 Date', 'Destination Sales (WH GRN +30d)',
+        'Recommended_Qty',
         'Destination Updated Stock', 'Destination Final Stock In Hand Days', 'Remark'
     ]
     
     # Format GRN dates
     result['Source Last GRN Date'] = result['Source Last GRN Date'].fillna('N/A')
+    result['Source Last WH GRN Date'] = result['Source Last WH GRN Date'].fillna('N/A')
+    
+    # WH GRN date is item-level, so source and destination should always be the same
+    # If destination WH GRN date is missing or N/A, use source WH GRN date
+    result['Destination Last WH GRN Date'] = result.apply(
+        lambda row: row['Source Last WH GRN Date'] 
+        if (pd.isna(row['Destination Last WH GRN Date']) or 
+            row['Destination Last WH GRN Date'] == 'N/A' or 
+            row['Destination Last WH GRN Date'] == '')
+        else row['Destination Last WH GRN Date'],
+        axis=1
+    )
+    
+    # Recalculate WH GRN +30 Date based on Destination Last WH GRN Date
+    # If destination WH GRN date is valid, calculate +30 days, otherwise N/A
+    def calculate_grn_plus_30(wh_grn_date):
+        if pd.notna(wh_grn_date) and wh_grn_date != 'N/A' and wh_grn_date != '':
+            try:
+                if isinstance(wh_grn_date, str):
+                    date_obj = pd.to_datetime(wh_grn_date)
+                else:
+                    date_obj = pd.Timestamp(wh_grn_date)
+                return (date_obj + pd.Timedelta(days=30)).strftime('%Y-%m-%d')
+            except:
+                return 'N/A'
+        return 'N/A'
+    
+    result['WH GRN +30 Date'] = result['Destination Last WH GRN Date'].apply(calculate_grn_plus_30)
+    
+    # Ensure Destination Sales (WH GRN +30d) is numeric and properly formatted
+    result['Destination Sales (WH GRN +30d)'] = pd.to_numeric(
+        result['Destination Sales (WH GRN +30d)'], errors='coerce'
+    ).fillna(0).astype(int)
+    
+    # FINAL SAFETY: Remove any duplicate rows before returning
+    initial_count = len(result)
+    result = result.drop_duplicates().reset_index(drop=True)
+    if len(result) < initial_count:
+        logger.warning(f"⚠️ FINAL DEDUP: Removed {initial_count - len(result)} duplicate rows from output")
+    
+    # STEP 5: DEBUG - Check item 168972 in FINAL OUTPUT
+    if 'ITEM_CODE' in result.columns:
+        debug_item = result[result['ITEM_CODE'] == '168972']
+        problem_shops = ['SPN', 'LFS', 'FAR', 'MM2', 'KAS']
+        if not debug_item.empty:
+            logger.info(f"\n{'='*80}")
+            logger.info(f"STEP 5: FINAL OUTPUT - Item 168972 ({len(debug_item)} total rows)")
+            logger.info(f"{'='*80}")
+            for shop in problem_shops:
+                shop_rows = debug_item[debug_item['Destination Shop'] == shop]
+                if not shop_rows.empty:
+                    logger.info(f"\n  DEST={shop}: {len(shop_rows)} rows in final output")
+                    for idx, row in shop_rows.iterrows():
+                        logger.info(f"    Row {idx}: src={row['Source Shop']:4s} | Destination Sales (WH GRN +30d)={row['Destination Sales (WH GRN +30d)']:>6} | Recommended_Qty={row['Recommended_Qty']:>3}")
+                else:
+                    logger.info(f"\n  DEST={shop}: NOT IN FINAL OUTPUT")
+            logger.info(f"{'='*80}\n")
     
     return result
 
@@ -613,7 +976,7 @@ def format_recommendations(df: pd.DataFrame) -> pd.DataFrame:
 def generate_recommendations_optimized(group: str = 'All', subgroup: str = 'All', 
                                       product: str = 'All', shop: str = 'All',
                                       use_grn_logic: bool = True, threshold: int = 10,
-                                      use_cache: bool = True) -> pd.DataFrame:
+                                      use_cache: bool = True, limit: int = None) -> pd.DataFrame:
     """
     ULTRA-FAST recommendation engine with optional cache support.
     
@@ -657,7 +1020,7 @@ def generate_recommendations_optimized(group: str = 'All', subgroup: str = 'All'
                 ORDER BY is_priority_transfer DESC, grn_priority_score DESC
             """
             
-            with get_db_connection('grndetails') as conn:
+            with get_db_connection('salesdata') as conn:
                 df = pd.read_sql(cache_query, conn)
             
             if not df.empty:
@@ -716,7 +1079,7 @@ def generate_recommendations_optimized(group: str = 'All', subgroup: str = 'All'
                 ORDER BY is_priority_transfer, grn_priority_score DESC, dest_shop
             """
             
-            with get_db_connection('grndetails') as conn:
+            with get_db_connection('salesdata') as conn:
                 df = pd.read_sql(cache_query, conn, params=tuple(cache_params))
             
             if not df.empty:
@@ -759,88 +1122,274 @@ def generate_recommendations_optimized(group: str = 'All', subgroup: str = 'All'
         source_filter_sql += " AND shop_code = %s"
         filter_params.append(shop.strip().upper())
     
-    # Single optimized query - database does all the heavy lifting
-    query = f"""
-        WITH priority_shops AS (
-            SELECT unnest(ARRAY['SPN', 'MSS', 'LFS', 'M03', 'KAS', 'MM1', 'MM2', 'FAR', 'KS7', 'WHL', 'MM3']) as shop_code
-        ),
-        source_shops AS (
-            -- Pre-filter source shops (shops that can give stock)
-            SELECT 
-                item_code,
-                item_name,
-                shop_code,
-                groups,
-                sub_group,
-                shop_stock,
-                sales_30d,
-                grn_age_days,
-                last_grn_date,
-                available_to_transfer,
-                is_priority_shop
-            FROM mv_recommendation_base
-            WHERE has_transferable_stock = 1  -- Stock > 30
-              AND is_priority_shop = 0  -- Not a priority shop (can't be source)
-              {"AND has_recent_grn = 0" if use_grn_logic else ""}  -- GRN > 30 days
-              {source_filter_sql}
-        ),
-        destination_shops AS (
-            -- Pre-filter destination shops (shops that need stock)
-            SELECT 
-                item_code,
-                shop_code,
-                shop_stock,
-                sales_30d,
-                grn_age_days,
-                last_grn_date,
-                is_priority_shop,
-                CASE WHEN ps.shop_code IS NOT NULL THEN 0 ELSE 1 END as priority_rank
-            FROM mv_recommendation_base
-            LEFT JOIN priority_shops ps ON mv_recommendation_base.shop_code = ps.shop_code
-            WHERE is_slow_moving = 1  -- Sales < {threshold}
-              {"AND has_recent_grn = 0" if use_grn_logic else ""}  -- GRN > 30 days
-        )
-        SELECT 
+    # Single optimized query - uses PRE-COMPUTED materialized views for SPEED
+    # FALLBACK: If MVs don't exist, uses inventory_master.sales_30d_wh
+    # CRITICAL: Only include PRIORITY SHOPS as destinations
+    priority_shops_list = "', '".join(Config.PRIORITY_SHOPS)
+    
+    # Check if MVs exist
+    use_mvs = True
+    try:
+        with get_db_connection('salesdata') as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM mv_last_30d_sales LIMIT 1")
+            cur.fetchone()
+    except:
+        use_mvs = False
+        logger.warning("⚠️  Materialized views not found, using inventory_master.sales_30d_wh (fallback)")
+    
+    if use_mvs:
+        # FAST PATH: Use materialized views
+        query = f"""
+            WITH item_wh_grn AS (
+                -- Get WH GRN date per item (item-level, same across all shops)
+                -- USES BOTH sup_shop_grn AND inventory_master.whgrn_dt as fallback
+                SELECT 
+                    COALESCE(grn.item_code, im.itemcode) AS item_code,
+                    COALESCE(grn.wh_grn_date, im.wh_grn_date) AS wh_grn_date
+                FROM (
+                    SELECT 
+                        TRIM(UPPER(item_code)) AS item_code,
+                        MAX(wh_grn_date) AS wh_grn_date
+                    FROM sup_shop_grn
+                    WHERE wh_grn_date IS NOT NULL
+                    GROUP BY 1
+                ) grn
+                FULL OUTER JOIN (
+                    SELECT DISTINCT
+                        TRIM(UPPER(itemcode)) AS itemcode,
+                        MAX(whgrn_dt) AS wh_grn_date
+                    FROM inventory_master
+                    WHERE whgrn_dt IS NOT NULL
+                    GROUP BY 1
+                ) im ON grn.item_code = im.itemcode
+                WHERE COALESCE(grn.wh_grn_date, im.wh_grn_date) IS NOT NULL
+            ),
+            wh_grn_sales AS (
+                -- Calculate sales between WH GRN date and WH GRN date + 30 days
+                -- UNION ALL from both sales_2024 and sales_2025 to capture all sales
+                SELECT 
+                    TRIM(UPPER(s."ITEM_CODE")) AS item_code,
+                    TRIM(UPPER(s."SHOP_CODE")) AS shop_code,
+                    SUM(COALESCE(s."QTY", 0)) AS wh_grn_30d_sales
+                FROM (
+                    SELECT "ITEM_CODE", "SHOP_CODE", "QTY", "DATE_INVOICE" FROM sales_2024
+                    UNION ALL
+                    SELECT "ITEM_CODE", "SHOP_CODE", "QTY", "DATE_INVOICE" FROM sales_2025
+                ) s
+                INNER JOIN item_wh_grn grn ON TRIM(UPPER(s."ITEM_CODE")) = grn.item_code
+                WHERE s."DATE_INVOICE" IS NOT NULL
+                  AND s."DATE_INVOICE" >= grn.wh_grn_date
+                  AND s."DATE_INVOICE" <= grn.wh_grn_date + INTERVAL '30 days'
+                GROUP BY 1, 2
+            ),
+            all_shops AS (
+                SELECT DISTINCT TRIM(UPPER(shopcode)) AS shop_code
+                FROM inventory_master
+                WHERE shopcode IN ('{priority_shops_list}')  -- ONLY PRIORITY SHOPS
+            ),
+            sources AS (
+                SELECT 
+                    TRIM(UPPER(im.itemcode)) AS item_code,
+                    MAX(im.itemname) AS item_name,
+                    TRIM(UPPER(im.shopcode)) AS shop_code,
+                    MAX(im.groupp) AS groups,
+                    MAX(im.subgroup) AS sub_group,
+                    MAX(im.shopstock) AS stock,
+                    MAX(COALESCE(s30.sales_qty, 0)) AS sales_30d,
+                    MAX(COALESCE(DATE_PART('day', CURRENT_DATE - im.shopgrn_dt), 999)) AS grn_age,
+                    MAX(im.shopgrn_dt) AS grn_date,
+                    MAX(GREATEST(im.shopstock - (COALESCE(s30.sales_qty, 0) * 1.0), 0)) AS available_to_transfer,
+                    MAX(CASE WHEN im.shopcode IN ('{priority_shops_list}') THEN 1 ELSE 0 END) AS is_priority_shop
+                FROM inventory_master im
+                LEFT JOIN mv_last_30d_sales s30 
+                    ON TRIM(UPPER(im.itemcode)) = TRIM(UPPER(s30.item_code))
+                    AND TRIM(UPPER(im.shopcode)) = TRIM(UPPER(s30.shop_code))
+                WHERE im.shopstock > 0  -- Include all shops with any stock
+                  {source_filter_sql}
+                GROUP BY TRIM(UPPER(im.itemcode)), TRIM(UPPER(im.shopcode))
+            ),
+            all_destinations AS (
+                SELECT
+                    src.item_code,
+                    src.item_name,
+                    src.groups,
+                    src.sub_group,
+                    shops.shop_code,
+                    COALESCE(inv.shopstock, 0) AS stock,
+                    COALESCE(s30.sales_qty, 0) AS sales_30d,
+                    inv.shopgrn_dt AS grn_date,
+                    inv.whgrn_dt AS wh_grn_date,
+                    COALESCE(wh_grn.wh_grn_30d_sales, 0) AS wh_grn_30d_sales,
+                    COALESCE(DATE_PART('day', CURRENT_DATE - inv.whgrn_dt), 999) AS grn_age,
+                    CASE WHEN shops.shop_code IN ('{priority_shops_list}') THEN 1 ELSE 0 END AS is_priority
+                FROM (SELECT item_code, item_name, groups, sub_group FROM sources GROUP BY 1,2,3,4) src
+                CROSS JOIN all_shops shops
+                LEFT JOIN inventory_master inv 
+                    ON src.item_code = TRIM(UPPER(inv.itemcode))
+                    AND shops.shop_code = TRIM(UPPER(inv.shopcode))
+                LEFT JOIN mv_last_30d_sales s30
+                    ON src.item_code = TRIM(UPPER(s30.item_code))
+                    AND shops.shop_code = TRIM(UPPER(s30.shop_code))
+                LEFT JOIN wh_grn_sales wh_grn
+                    ON src.item_code = wh_grn.item_code
+                    AND shops.shop_code = wh_grn.shop_code
+            ),
+            destinations AS (
+                SELECT * FROM all_destinations
+                WHERE shop_code IN ('{priority_shops_list}')  -- ONLY PRIORITY SHOPS
+            )
+    """
+    else:
+        # FALLBACK PATH: Use inventory_master sales (slower but works)
+        query = f"""
+            WITH item_wh_grn AS (
+                -- Get WH GRN date per item (item-level, same across all shops)
+                -- USES BOTH sup_shop_grn AND inventory_master.whgrn_dt as fallback
+                SELECT 
+                    COALESCE(grn.item_code, im.itemcode) AS item_code,
+                    COALESCE(grn.wh_grn_date, im.wh_grn_date) AS wh_grn_date
+                FROM (
+                    SELECT 
+                        TRIM(UPPER(item_code)) AS item_code,
+                        MAX(wh_grn_date) AS wh_grn_date
+                    FROM sup_shop_grn
+                    WHERE wh_grn_date IS NOT NULL
+                    GROUP BY 1
+                ) grn
+                FULL OUTER JOIN (
+                    SELECT DISTINCT
+                        TRIM(UPPER(itemcode)) AS itemcode,
+                        MAX(whgrn_dt) AS wh_grn_date
+                    FROM inventory_master
+                    WHERE whgrn_dt IS NOT NULL
+                    GROUP BY 1
+                ) im ON grn.item_code = im.itemcode
+                WHERE COALESCE(grn.wh_grn_date, im.wh_grn_date) IS NOT NULL
+            ),
+            wh_grn_sales AS (
+                -- Calculate sales between WH GRN date and WH GRN date + 30 days
+                -- UNION ALL from both sales_2024 and sales_2025 to capture all sales
+                SELECT 
+                    TRIM(UPPER(s."ITEM_CODE")) AS item_code,
+                    TRIM(UPPER(s."SHOP_CODE")) AS shop_code,
+                    SUM(COALESCE(s."QTY", 0)) AS wh_grn_30d_sales
+                FROM (
+                    SELECT "ITEM_CODE", "SHOP_CODE", "QTY", "DATE_INVOICE" FROM sales_2024
+                    UNION ALL
+                    SELECT "ITEM_CODE", "SHOP_CODE", "QTY", "DATE_INVOICE" FROM sales_2025
+                ) s
+                INNER JOIN item_wh_grn grn ON TRIM(UPPER(s."ITEM_CODE")) = grn.item_code
+                WHERE s."DATE_INVOICE" IS NOT NULL
+                  AND s."DATE_INVOICE" >= grn.wh_grn_date
+                  AND s."DATE_INVOICE" <= grn.wh_grn_date + INTERVAL '30 days'
+                GROUP BY 1, 2
+            ),
+            all_shops AS (
+                SELECT DISTINCT TRIM(UPPER(shopcode)) AS shop_code
+                FROM inventory_master
+                WHERE shopcode IN ('{priority_shops_list}')  -- ONLY PRIORITY SHOPS
+            ),
+            sources AS (
+                SELECT 
+                    TRIM(UPPER(itemcode)) AS item_code,
+                    MAX(itemname) AS item_name,
+                    TRIM(UPPER(shopcode)) AS shop_code,
+                    MAX(groupp) AS groups,
+                    MAX(subgroup) AS sub_group,
+                    MAX(shopstock) AS stock,
+                    MAX(sales_30d_wh) AS sales_30d,
+                    MAX(COALESCE(DATE_PART('day', CURRENT_DATE - shopgrn_dt), 999)) AS grn_age,
+                    MAX(shopgrn_dt) AS grn_date,
+                    MAX(GREATEST(shopstock - (sales_30d_wh * 1.0), 0)) AS available_to_transfer,
+                    MAX(CASE WHEN shopcode IN ('{priority_shops_list}') THEN 1 ELSE 0 END) AS is_priority_shop
+                FROM inventory_master
+                WHERE shopstock > 0
+                  {source_filter_sql}
+                GROUP BY TRIM(UPPER(itemcode)), TRIM(UPPER(shopcode))
+            ),
+            all_destinations AS (
+                SELECT
+                    src.item_code,
+                    src.item_name,
+                    src.groups,
+                    src.sub_group,
+                    shops.shop_code,
+                    COALESCE(inv.shopstock, 0) AS stock,
+                    COALESCE(inv.sales_30d_wh, 0) AS sales_30d,
+                    inv.shopgrn_dt AS grn_date,
+                    inv.whgrn_dt AS wh_grn_date,
+                    COALESCE(wh_grn.wh_grn_30d_sales, 0) AS wh_grn_30d_sales,
+                    COALESCE(DATE_PART('day', CURRENT_DATE - inv.whgrn_dt), 999) AS grn_age,
+                    CASE WHEN shops.shop_code IN ('{priority_shops_list}') THEN 1 ELSE 0 END AS is_priority
+                FROM (SELECT item_code, item_name, groups, sub_group FROM sources GROUP BY 1,2,3,4) src
+                CROSS JOIN all_shops shops
+                LEFT JOIN inventory_master inv 
+                    ON src.item_code = TRIM(UPPER(inv.itemcode))
+                    AND shops.shop_code = TRIM(UPPER(inv.shopcode))
+                LEFT JOIN wh_grn
+                    ON src.item_code = wh_grn.item_code
+                    AND shops.shop_code = wh_grn.shop_code
+            ),
+            destinations AS (
+                SELECT * FROM all_destinations
+                WHERE shop_code IN ('{priority_shops_list}')  -- ONLY PRIORITY SHOPS
+            )
+    """
+    
+    # Common SELECT query for both paths - deduplication handled in pandas
+    query += """
+        SELECT
             src.item_code,
             src.item_name,
             src.shop_code as source_shop,
-            src.shop_stock as source_stock,
+            src.stock as source_stock,
             src.sales_30d as source_sales,
-            src.grn_age_days as source_grn_age,
-            src.last_grn_date as source_last_grn,
+            src.grn_age as source_grn_age,
+            src.grn_date as source_last_grn,
+            wh_grn.wh_grn_date as source_wh_grn_date,
             dest.shop_code as dest_shop,
-            dest.shop_stock as dest_stock,
+            dest.stock as dest_stock,
             dest.sales_30d as dest_sales,
-            dest.grn_age_days as dest_grn_age,
-            dest.last_grn_date as dest_last_grn,
-            dest.is_priority_shop,
-            dest.priority_rank,
-            -- Pre-calculate recommended qty
+            dest.grn_age as dest_grn_age,
+            dest.grn_date as dest_last_grn,
+            wh_grn.wh_grn_date as dest_wh_grn_date,
+            (wh_grn.wh_grn_date + INTERVAL '30 days')::date as dest_wh_grn_plus_30,
+            COALESCE(dest.wh_grn_30d_sales, 0) as dest_wh_grn_30d_sales,
             LEAST(
                 GREATEST(
                     CASE WHEN dest.sales_30d > 0 
-                         THEN dest.sales_30d - dest.shop_stock
-                         ELSE 30 - dest.shop_stock END,
+                         THEN dest.sales_30d - dest.stock
+                         ELSE 30 - dest.stock END,
                     0
                 ),
                 src.available_to_transfer
-            ) as recommended_qty,
-            -- GRN age priority score (older = higher priority)
-            COALESCE(src.grn_age_days, 999) as grn_priority_score
-        FROM source_shops src
-        INNER JOIN destination_shops dest
+            )::INTEGER as recommended_qty,
+            dest.is_priority as is_priority_shop,
+            src.groups,
+            src.sub_group
+        FROM sources src
+        INNER JOIN destinations dest
             ON src.item_code = dest.item_code
-            AND src.shop_code != dest.shop_code  -- Can't transfer to self
-        WHERE recommended_qty > 0  -- Only show recommendations with quantity > 0
-        ORDER BY 
-            src.item_code, 
-            dest.priority_rank, 
-            grn_priority_score DESC,  -- Older GRN items first (higher priority)
-            dest.shop_code
+            AND src.shop_code != dest.shop_code
+        LEFT JOIN item_wh_grn wh_grn
+            ON src.item_code = wh_grn.item_code
+        WHERE src.available_to_transfer > 0  -- Only sources with stock to transfer
+          AND LEAST(
+                GREATEST(
+                    CASE WHEN dest.sales_30d > 0 
+                         THEN dest.sales_30d - dest.stock
+                         ELSE 30 - dest.stock END,
+                    0
+                ),
+                src.available_to_transfer
+            ) > 0
+        ORDER BY src.grn_age DESC, dest.is_priority DESC, src.item_code, dest.shop_code
+        {f'LIMIT {limit}' if limit else ''}
     """
     
     try:
-        with get_db_connection('grndetails') as conn:
+        with get_db_connection('salesdata') as conn:
             if filter_params:
                 # Use parameterized query
                 df = pd.read_sql(query, conn, params=tuple(filter_params))
@@ -850,6 +1399,59 @@ def generate_recommendations_optimized(group: str = 'All', subgroup: str = 'All'
         
         query_time = time.time() - start_time
         logger.info(f"⚡ Query executed in {query_time:.2f}s - fetched {len(df)} raw recommendations")
+        
+        # STEP 1: DEBUG - Check item 168972 values immediately after SQL query (RAW DATA)
+        if not df.empty and 'item_code' in df.columns:
+            debug_item = df[df['item_code'] == '168972']
+            problem_shops = ['SPN', 'LFS', 'FAR', 'MM2', 'KAS']
+            if not debug_item.empty:
+                logger.info(f"\n{'='*80}")
+                logger.info(f"STEP 1: RAW SQL OUTPUT - Item 168972 ({len(debug_item)} total rows)")
+                logger.info(f"{'='*80}")
+                for shop in problem_shops:
+                    shop_rows = debug_item[debug_item['dest_shop'] == shop]
+                    if not shop_rows.empty:
+                        logger.info(f"\n  DEST={shop}: {len(shop_rows)} rows")
+                        for idx, row in shop_rows.iterrows():
+                            logger.info(f"    Row {idx}: src={row['source_shop']:4s} | dest_wh_grn_30d_sales={row.get('dest_wh_grn_30d_sales', 'N/A'):>6} | rec_qty={row.get('recommended_qty', 'N/A'):>3}")
+                    else:
+                        logger.info(f"\n  DEST={shop}: NO ROWS FOUND IN SQL OUTPUT")
+                logger.info(f"{'='*80}\n")
+        
+        # SAFETY: Remove any duplicate rows (all columns identical)
+        initial_count = len(df)
+        df = df.drop_duplicates(subset=[
+            'item_code', 'source_shop', 'dest_shop', 'source_stock', 'source_sales',
+            'dest_stock', 'dest_sales', 'dest_wh_grn_30d_sales', 'recommended_qty'
+        ]).reset_index(drop=True)
+        if len(df) < initial_count:
+            logger.warning(f"⚠️ Removed {initial_count - len(df)} duplicate rows")
+        
+        # STEP 2: DEBUG - Check item 168972 values AFTER deduplication
+        if not df.empty and 'item_code' in df.columns:
+            debug_item = df[df['item_code'] == '168972']
+            problem_shops = ['SPN', 'LFS', 'FAR', 'MM2', 'KAS']
+            if not debug_item.empty:
+                logger.info(f"\n{'='*80}")
+                logger.info(f"STEP 2: AFTER DEDUPLICATION - Item 168972 ({len(debug_item)} total rows)")
+                logger.info(f"{'='*80}")
+                for shop in problem_shops:
+                    shop_rows = debug_item[debug_item['dest_shop'] == shop]
+                    if not shop_rows.empty:
+                        logger.info(f"\n  DEST={shop}: {len(shop_rows)} rows")
+                        for idx, row in shop_rows.iterrows():
+                            logger.info(f"    Row {idx}: src={row['source_shop']:4s} | dest_wh_grn_30d_sales={row.get('dest_wh_grn_30d_sales', 'N/A'):>6} | rec_qty={row.get('recommended_qty', 'N/A'):>3}")
+                    else:
+                        logger.info(f"\n  DEST={shop}: NO ROWS AFTER DEDUP")
+                logger.info(f"{'='*80}\n")
+        
+        # CRITICAL: Filter to ensure only priority shops are destinations
+        if not df.empty and 'dest_shop' in df.columns:
+            non_priority_count = len(df[~df['dest_shop'].isin(Config.PRIORITY_SHOPS)])
+            if non_priority_count > 0:
+                logger.warning(f"⚠️ Removing {non_priority_count} non-priority destination recommendations")
+                df = df[df['dest_shop'].isin(Config.PRIORITY_SHOPS)]
+            logger.info(f"✅ All {len(df)} recommendations are to priority shops only")
         
     except Exception as e:
         logger.error(f"❌ Optimized query failed: {e}")
@@ -870,14 +1472,18 @@ def generate_recommendations_optimized(group: str = 'All', subgroup: str = 'All'
     return result
 
 
-def generate_recommendations(df: pd.DataFrame, use_grn_logic: bool = True) -> pd.DataFrame:
+def generate_recommendations(df: pd.DataFrame, use_grn_logic: bool = True, threshold: int = 10) -> pd.DataFrame:
     """
-    LEGACY recommendation engine - kept for backwards compatibility.
+    ENHANCED recommendation engine with updated business logic.
     
-    This version processes a pre-loaded dataframe with nested loops.
-    NEW CODE SHOULD USE generate_recommendations_optimized() instead.
+    NEW BUSINESS RULES (Nov 2025):
+    1. ONLY priority shops as destinations (11 shops: SPN, MSS, LFS, M03, KAS, MM1, MM2, FAR, KS7, WHL, MM3)
+    2. Calculate "Updated Last 30d Sales" = sales from (latest WH GRN date) to (GRN date + 30 days)
+    3. Recommended Qty = MAX(Last 30d Sales, Updated Last 30d Sales) - NO 30-UNIT CAP
+    4. Sum of recommended qty per source shop cannot exceed source shop's available stock
+    5. Prioritize based on which sales figure is higher
     
-    Performance: ~90-120s for 121K rows (use optimized version for 3-5s)
+    Performance: Optimized with vectorized operations where possible
     """
     import pandas as pd
     import numpy as np
@@ -889,62 +1495,124 @@ def generate_recommendations(df: pd.DataFrame, use_grn_logic: bool = True) -> pd
         return pd.DataFrame()
 
     start_time = time.time()
-    logger.info(f"⚠️ LEGACY MODE | Generating recommendations (GRN: {use_grn_logic}) | Input rows: {len(df)}")
+    logger.info(f"🚀 NEW LOGIC | Generating recommendations (GRN: {use_grn_logic}) | Input rows: {len(df)}")
 
     # --- normalize input data ---
     base_df = df.copy()
     base_df['ITEM_CODE'] = base_df['ITEM_CODE'].str.strip().str.upper()
     base_df['SHOP_CODE'] = base_df['SHOP_CODE'].str.strip().str.upper()
+    
+    # Ensure GROUPS and SUB_GROUP columns exist
+    if 'GROUPS' not in base_df.columns:
+        logger.warning("GROUPS column missing from input data")
+        base_df['GROUPS'] = 'N/A'
+    if 'SUB_GROUP' not in base_df.columns:
+        logger.warning("SUB_GROUP column missing from input data")
+        base_df['SUB_GROUP'] = 'N/A'
 
-    # --- optional GRN merge ---
-    if use_grn_logic:
-        grn_sales = calculate_grn_sales()
-        grn_sales['ITEM_CODE'] = grn_sales['ITEM_CODE'].str.strip().str.upper()
-        grn_sales['SHOP_CODE'] = grn_sales['SHOP_CODE'].str.strip().str.upper()
-        base_df = base_df.merge(grn_sales, on=['ITEM_CODE', 'SHOP_CODE'], how='left', copy=False)
-        base_df['TOTAL_SALES_GRN_TO_TODAY'] = base_df['TOTAL_SALES_GRN_TO_TODAY'].fillna(0)
-    else:
-        base_df['TOTAL_SALES_GRN_TO_TODAY'] = 0
-
-    # --- Load both source and destination 30d sales (use cached aggregate) ---
+    # --- Load standard 30-day sales ---
     sales_30d_df = load_last_30d_sales()
     if not sales_30d_df.empty:
-        # Ensure columns are normalized
         sales_30d_df.columns = sales_30d_df.columns.str.upper()
         sales_30d_df['ITEM_CODE'] = sales_30d_df['ITEM_CODE'].str.strip().str.upper()
         sales_30d_df['SHOP_CODE'] = sales_30d_df['SHOP_CODE'].str.strip().str.upper()
-
-        # Merge with base_df to get sales for each item-shop combination
-        # Use explicit left_on/right_on in case of odd column capitalization
         base_df = base_df.merge(sales_30d_df, on=['ITEM_CODE', 'SHOP_CODE'], how='left')
-        base_df['DEST_LAST_30D_SALES'] = base_df.get('SALES_30D', 0).fillna(0).astype(float)
+        base_df['LAST_30D_SALES'] = base_df.get('SALES_30D', base_df.get('ITEM_SALES_30_DAYS', 0)).fillna(0).astype(float)
         base_df = base_df.drop(columns=['SALES_30D', 'ITEM_SALES_30_DAYS'], errors='ignore')
-        logger.info(f"✅ Loaded 30-day sales from cache for {len(sales_30d_df)} item-shop combinations")
     else:
-        # Fallback: use ITEM_SALES_30_DAYS if cached sales empty
-        base_df['DEST_LAST_30D_SALES'] = base_df.get('ITEM_SALES_30_DAYS', 0).fillna(0).astype(float)
+        base_df['LAST_30D_SALES'] = base_df.get('ITEM_SALES_30_DAYS', 0).fillna(0).astype(float)
 
-    # Defensive cleanup: ensure required keys exist and are normalized
-    base_df['ITEM_CODE'] = base_df['ITEM_CODE'].astype(str).str.strip().str.upper()
-    base_df['SHOP_CODE'] = base_df['SHOP_CODE'].astype(str).str.strip().str.upper()
+    # --- Load UPDATED Last 30d Sales (from WH GRN date + 30 days) ---
+    # This is the NEW business requirement
+    # OPTIMIZATION: Try to get from inventory_master first (faster), fallback to calculation
+    if 'WH_GRN_SALES_30D' in base_df.columns:
+        # Already loaded from inventory_master - FASTEST
+        base_df['UPDATED_LAST_30D_SALES'] = base_df['WH_GRN_SALES_30D'].fillna(0).astype(float)
+        logger.info(f"✅ Using pre-computed WH GRN sales from inventory_master (FASTEST)")
+    else:
+        # Fallback: Calculate on-the-fly
+        shop_grn_sales = load_shop_grn_sales()  # Load for all shops
+        if not shop_grn_sales.empty:
+            shop_grn_sales['ITEM_CODE'] = shop_grn_sales['ITEM_CODE'].str.strip().str.upper()
+            shop_grn_sales['SHOP_CODE'] = shop_grn_sales['SHOP_CODE'].str.strip().str.upper()
+            base_df = base_df.merge(shop_grn_sales, on=['ITEM_CODE', 'SHOP_CODE'], how='left')
+            base_df['UPDATED_LAST_30D_SALES'] = base_df.get('SHOP_GRN_SALES_30D', 0).fillna(0).astype(float)
+            logger.info(f"✅ Calculated Updated Last 30d Sales on-the-fly")
+        else:
+            base_df['UPDATED_LAST_30D_SALES'] = 0
+
+    # --- Load GRN dates from sup_shop_grn table (in salesdata db) ---
+    try:
+        with get_db_connection('salesdata') as conn:
+            # Load shop GRN dates (per item-shop)
+            shop_grn_df = pd.read_sql("""
+                SELECT 
+                    TRIM(UPPER(item_code)) AS item_code,
+                    TRIM(UPPER(shop_code)) AS shop_code,
+                    MAX(shop_grn_date) AS shop_grn_date
+                FROM sup_shop_grn
+                WHERE shop_grn_date IS NOT NULL
+                GROUP BY 1, 2
+            """, conn)
+            
+            # CRITICAL: Load WH GRN dates (per ITEM ONLY - warehouse level)
+            wh_grn_df = pd.read_sql("""
+                SELECT 
+                    TRIM(UPPER(item_code)) AS item_code,
+                    MAX(wh_grn_date) AS wh_grn_date
+                FROM sup_shop_grn
+                WHERE wh_grn_date IS NOT NULL
+                GROUP BY 1
+            """, conn)
+            
+            # Merge shop GRN dates
+            if not shop_grn_df.empty:
+                shop_grn_df.columns = ['ITEM_CODE', 'SHOP_CODE', 'SHOP_GRN_DATE_FROM_GRN']
+                base_df = base_df.merge(shop_grn_df, on=['ITEM_CODE', 'SHOP_CODE'], how='left')
+                base_df['SHOP_GRN_DATE'] = base_df['SHOP_GRN_DATE_FROM_GRN'].fillna(base_df.get('SHOP_GRN_DATE', pd.NaT))
+                base_df = base_df.drop(columns=['SHOP_GRN_DATE_FROM_GRN'], errors='ignore')
+            
+            # Merge WH GRN dates (ITEM-LEVEL - same for all shops)
+            # CRITICAL: Only fill missing values, don't overwrite existing WH_GRN_DATE from inventory_master
+            if not wh_grn_df.empty:
+                wh_grn_df.columns = ['ITEM_CODE', 'WH_GRN_DATE_FROM_GRN']
+                base_df = base_df.merge(wh_grn_df, on='ITEM_CODE', how='left')
+                # Use existing WH_GRN_DATE from inventory_master if available, otherwise use from sup_shop_grn
+                if 'WH_GRN_DATE' in base_df.columns:
+                    base_df['WH_GRN_DATE'] = base_df['WH_GRN_DATE'].fillna(base_df['WH_GRN_DATE_FROM_GRN'])
+                else:
+                    base_df['WH_GRN_DATE'] = base_df['WH_GRN_DATE_FROM_GRN']
+                base_df = base_df.drop(columns=['WH_GRN_DATE_FROM_GRN'], errors='ignore')
+                logger.info(f"✅ Loaded WH GRN dates (item-level) for {len(wh_grn_df)} unique items")
+            
+            if not shop_grn_df.empty:
+                logger.info(f"✅ Loaded shop GRN dates for {len(shop_grn_df)} item-shop combinations")
+                
+    except Exception as e:
+        logger.warning(f"Could not load GRN dates from sup_shop_grn: {e}")
+        if 'SHOP_GRN_DATE' not in base_df.columns:
+            base_df['SHOP_GRN_DATE'] = pd.NaT
+        if 'WH_GRN_DATE' not in base_df.columns:
+            base_df['WH_GRN_DATE'] = pd.NaT
+
+    # Convert dates to datetime
+    base_df['SHOP_GRN_DATE'] = pd.to_datetime(base_df.get('SHOP_GRN_DATE', pd.NaT), errors='coerce')
     
-    # Convert SHOP_GRN_DATE to datetime if it exists
-    if 'SHOP_GRN_DATE' in base_df.columns:
-        base_df['SHOP_GRN_DATE'] = pd.to_datetime(base_df['SHOP_GRN_DATE'], errors='coerce')
-    else:
-        base_df['SHOP_GRN_DATE'] = pd.NaT
-
-    # --- Use SHOP_GRN_DATE as the source of GRN dates (mv_last_grn_dates is empty) ---
-    # SHOP_GRN_DATE comes from mv_nowhstock_grn and has actual data
+    # CRITICAL: Ensure WH_GRN_DATE exists (loaded from inventory_master as whgrn_dt)
+    if 'WH_GRN_DATE' not in base_df.columns:
+        logger.warning("WH_GRN_DATE not in base_df columns, loading from sup_shop_grn")
+        # Will be loaded from sup_shop_grn below
+        base_df['WH_GRN_DATE'] = pd.NaT
+    
+    base_df['WH_GRN_DATE'] = pd.to_datetime(base_df['WH_GRN_DATE'], errors='coerce')
     base_df['GRN_DATE'] = base_df['SHOP_GRN_DATE']
-    logger.info(f"✅ Using SHOP_GRN_DATE as GRN_DATE source")
     
-    # --- ensure every shop appears (all 82 shops as potential destinations)
+    # --- CRITICAL: Ensure ALL priority shops appear as potential destinations ---
     all_items = base_df['ITEM_CODE'].unique()
-    all_shops_idx = pd.MultiIndex.from_product(
-        [all_items, Config.ALL_SHOPS], names=['ITEM_CODE', 'SHOP_CODE']
+    all_priority_shops_idx = pd.MultiIndex.from_product(
+        [all_items, Config.PRIORITY_SHOPS], names=['ITEM_CODE', 'SHOP_CODE']
     )
-    missing = all_shops_idx.difference(pd.MultiIndex.from_frame(base_df[['ITEM_CODE', 'SHOP_CODE']]))
+    missing = all_priority_shops_idx.difference(pd.MultiIndex.from_frame(base_df[['ITEM_CODE', 'SHOP_CODE']]))
     
     if len(missing) > 0:
         mdf = pd.DataFrame(list(missing), columns=['ITEM_CODE', 'SHOP_CODE'])
@@ -952,31 +1620,48 @@ def generate_recommendations(df: pd.DataFrame, use_grn_logic: bool = True) -> pd
             base_df.drop_duplicates('ITEM_CODE').set_index('ITEM_CODE')['ITEM_NAME'].to_dict()
         )
         mdf['SHOP_STOCK'] = 0
-        mdf['DEST_LAST_30D_SALES'] = 0
-        mdf['TOTAL_SALES_GRN_TO_TODAY'] = 0
+        mdf['LAST_30D_SALES'] = 0
+        mdf['UPDATED_LAST_30D_SALES'] = 0
         mdf['SHOP_GRN_DATE'] = pd.NaT
+        mdf['WH_GRN_DATE'] = pd.NaT
         mdf['GRN_DATE'] = pd.NaT
         base_df = pd.concat([base_df, mdf], ignore_index=True)
-        logger.info(f"✅ Added {len(missing)} missing shop-item combinations to ensure all {len(Config.ALL_SHOPS)} shops are available")
+        logger.info(f"✅ Added {len(missing)} missing priority shop-item combinations")
 
-    # --- generate recommendations ---
-    if len(base_df) == 0:
-        logger.warning("Base dataframe empty after preparation")
+    # --- Filter to ONLY priority shops as destinations ---
+    priority_df = base_df[base_df['SHOP_CODE'].isin(Config.PRIORITY_SHOPS)].copy()
+    
+    if priority_df.empty:
+        logger.warning("No priority shops found in base_df")
         return pd.DataFrame()
     
-    # Pre-compute shop combinations for each item
-    # Don't filter base_df before merge - we need ALL shops as potential destinations
-    merged = base_df.merge(base_df, on='ITEM_CODE', suffixes=('_SRC', '_DST'), how='inner')
+    logger.info(f"✅ Filtered to {len(priority_df)} priority shop records (destinations only)")
     
-    # Filter source shops: 
-    # 1. Same shop combinations (will show with qty=0)
-    # 2. Stock > 30 (can be sources)
-    # 3. Priority shops (will show with qty=0)
-    merged = merged[
-        (merged['SHOP_CODE_SRC'] == merged['SHOP_CODE_DST']) |  # Same shop
-        (merged['SHOP_STOCK_SRC'] > 30) |  # Has surplus stock
-        (merged['SHOP_CODE_SRC'].isin(Config.PRIORITY_SHOPS))  # Priority shop
-    ]
+    # Debug: Check GRN data in base_df before merge
+    logger.info(f"Columns in base_df: {list(base_df.columns)}")
+    non_null_shop_grn = base_df['SHOP_GRN_DATE'].notna().sum()
+    non_null_wh_grn = base_df['WH_GRN_DATE'].notna().sum() if 'WH_GRN_DATE' in base_df.columns else 0
+    non_null_updated_sales = (base_df['UPDATED_LAST_30D_SALES'] > 0).sum() if 'UPDATED_LAST_30D_SALES' in base_df.columns else 0
+    logger.info(f"Before merge - Non-null SHOP_GRN_DATE: {non_null_shop_grn}, WH_GRN_DATE: {non_null_wh_grn}, UPDATED_LAST_30D_SALES>0: {non_null_updated_sales}")
+    
+    # --- Merge: ALL sources × PRIORITY destinations ---
+    merged = base_df.merge(priority_df, on='ITEM_CODE', suffixes=('_SRC', '_DST'), how='inner')
+    
+    # Debug: Check if GRN dates are in merged dataframe
+    grn_cols = [col for col in merged.columns if 'GRN' in col.upper()]
+    logger.info(f"GRN-related columns in merged data: {grn_cols}")
+    if 'SHOP_GRN_DATE_DST' in merged.columns:
+        non_null_grn = merged['SHOP_GRN_DATE_DST'].notna().sum()
+        logger.info(f"Non-null SHOP_GRN_DATE_DST values: {non_null_grn} out of {len(merged)}")
+    
+    # Double-check destinations are ONLY priority shops
+    merged = merged[merged['SHOP_CODE_DST'].isin(Config.PRIORITY_SHOPS)]
+    
+    # Filter source shops with stock > 30 (can transfer surplus)
+    merged = merged[merged['SHOP_STOCK_SRC'] > 30]
+    
+    # Remove same-shop transfers
+    merged = merged[merged['SHOP_CODE_SRC'] != merged['SHOP_CODE_DST']]
     
     if merged.empty:
         logger.warning("No valid shop combinations found")
@@ -985,255 +1670,313 @@ def generate_recommendations(df: pd.DataFrame, use_grn_logic: bool = True) -> pd
     logger.info(f"⚡ Processing {len(merged)} shop-to-shop combinations")
 
     recs = []
-    items_processed = 0
-    
-    # Track total recommended qty per (item, dest_shop) to enforce 30-unit cap
-    destination_totals = {}
-    
-    # ⚡ OPTIMIZATION 3: Pre-compute today's date once
     today = pd.Timestamp.today().date()
+    
+    # Track allocations per source shop per item to enforce stock limits
+    source_allocations = {}  # Key: (item, source_shop), Value: total allocated
 
     for (item, src_shop), g in merged.groupby(['ITEM_CODE', 'SHOP_CODE_SRC'], observed=True):
         src_row = g.iloc[0]
         src_stock = int(src_row['SHOP_STOCK_SRC'] or 0)
-        src_sales = float(src_row.get('DEST_LAST_30D_SALES_SRC', 0) or 0)
+        src_sales = float(src_row.get('LAST_30D_SALES_SRC', 0) or 0)
         item_name = src_row.get('ITEM_NAME_SRC', item)
+        
+        # Get Group and Sub Group
+        item_group = src_row.get('GROUPS_SRC', src_row.get('GROUPS', 'N/A'))
+        item_subgroup = src_row.get('SUB_GROUP_SRC', src_row.get('SUB_GROUP', 'N/A'))
 
+        # Calculate available stock from source
         src_needed_30d = src_sales if src_sales > 0 else 30
-        
-        # ⚡ OPTIMIZATION 4: Calculate available once and skip early if nothing to transfer
         available = max(src_stock - src_needed_30d, 0)
-        if available <= 0:
-            continue
-
-        # --- Check if SOURCE shop GRN is recent (within last 30 days) ---
-        src_last_grn = pd.NaT
-        if 'GRN_DATE_SRC' in src_row.index:
-            src_last_grn = src_row['GRN_DATE_SRC']
-        elif 'SHOP_GRN_DATE_SRC' in src_row.index:
-            src_last_grn = src_row['SHOP_GRN_DATE_SRC']
         
-        src_grn_is_recent = False
+        if available <= 0:
+            continue  # Skip sources with no available stock
+
+        # Get source GRN info (both shop and WH)
+        src_last_grn = src_row.get('SHOP_GRN_DATE_SRC', src_row.get('GRN_DATE_SRC', pd.NaT))
+        src_wh_grn = src_row.get('WH_GRN_DATE_SRC', pd.NaT)
         src_grn_age_days = 0
+        src_grn_is_recent = False
         
         if pd.notna(src_last_grn):
-            # Convert to timezone-naive date for proper age calculation
             src_grn_date = pd.Timestamp(src_last_grn)
             if src_grn_date.tz is not None:
                 src_grn_date = src_grn_date.tz_localize(None)
             src_grn_age_days = (pd.Timestamp(today) - src_grn_date).days
             if src_grn_age_days < 30:
                 src_grn_is_recent = True
-        
-        # If source GRN is recent, skip recommendations for this source shop
+
+        # Skip if source GRN is recent (within 30 days)
         if use_grn_logic and src_grn_is_recent:
             continue
 
-        # Get all potential destination shops for this item (priority first)
-        dest_order = list(Config.PRIORITY_SHOPS) + [
-            x for x in g['SHOP_CODE_DST'].unique() 
-            if x not in Config.PRIORITY_SHOPS and x != src_shop
-        ]
+        # Initialize source allocation tracker
+        source_key = (item, src_shop)
+        if source_key not in source_allocations:
+            source_allocations[source_key] = 0
 
-        for dest_shop in dest_order:
+        # Process all priority destinations for this item
+        destination_recommendations = []
+        
+        for dest_shop in Config.PRIORITY_SHOPS:
+            if dest_shop == src_shop:
+                continue  # Skip same-shop transfers
+
+            # Get destination data
             drow = g[g['SHOP_CODE_DST'] == dest_shop]
-            if drow.empty:
-                continue
-                
-            dest_stock = int(drow['SHOP_STOCK_DST'].iloc[0] or 0)
-            dest_sales = float(drow['DEST_LAST_30D_SALES_DST'].iloc[0] or 0)
-
-            # Ensure numeric values and fill NaNs
-            dest_stock = 0 if pd.isna(dest_stock) else dest_stock
-            dest_sales = 0 if pd.isna(dest_sales) else dest_sales
             
-            # Skip destinations with high sales (not slow-moving)
-            if dest_sales >= 10:
-                continue
+            if not drow.empty:
+                dest_stock = int(drow['SHOP_STOCK_DST'].iloc[0] or 0)
+                dest_last_30d = float(drow['LAST_30D_SALES_DST'].iloc[0] or 0)
+                dest_updated_30d = float(drow.get('UPDATED_LAST_30D_SALES_DST', pd.Series([0])).iloc[0] or 0)
+                # Get destination GRN dates (both shop and WH)
+                dest_last_grn = drow['SHOP_GRN_DATE_DST'].iloc[0] if 'SHOP_GRN_DATE_DST' in drow.columns else pd.NaT
+                dest_wh_grn = drow['WH_GRN_DATE_DST'].iloc[0] if 'WH_GRN_DATE_DST' in drow.columns else pd.NaT
+            else:
+                # Look up from base_df
+                dest_lookup = base_df[(base_df['ITEM_CODE'] == item) & (base_df['SHOP_CODE'] == dest_shop)]
+                if not dest_lookup.empty:
+                    dest_stock = int(dest_lookup['SHOP_STOCK'].iloc[0] or 0)
+                    dest_last_30d = float(dest_lookup.get('LAST_30D_SALES', 0).iloc[0] or 0)
+                    dest_updated_30d = float(dest_lookup.get('UPDATED_LAST_30D_SALES', 0).iloc[0] or 0)
+                    # Try multiple columns for GRN dates
+                    dest_last_grn = dest_lookup.get('SHOP_GRN_DATE', dest_lookup.get('GRN_DATE', pd.Series([pd.NaT]))).iloc[0]
+                    dest_wh_grn = dest_lookup.get('WH_GRN_DATE', pd.Series([pd.NaT])).iloc[0]
+                else:
+                    dest_stock = 0
+                    dest_last_30d = 0
+                    dest_updated_30d = 0
+                    dest_last_grn = pd.NaT
+                    dest_wh_grn = pd.NaT
 
-            # Get destination last GRN date
-            dest_last_grn = pd.NaT
-            if 'GRN_DATE_DST' in drow.columns:
-                dest_last_grn = drow['GRN_DATE_DST'].iloc[0]
-            elif 'SHOP_GRN_DATE_DST' in drow.columns:
-                dest_last_grn = drow['SHOP_GRN_DATE_DST'].iloc[0]
-            
             # Calculate destination GRN age
             dest_grn_age_days = 0
             if pd.notna(dest_last_grn):
-                # Convert to timezone-naive date for proper age calculation
                 dest_grn_date = pd.Timestamp(dest_last_grn)
                 if dest_grn_date.tz is not None:
                     dest_grn_date = dest_grn_date.tz_localize(None)
                 dest_grn_age_days = (pd.Timestamp(today) - dest_grn_date).days
+
+            # === NEW LOGIC: Use MAX of Last 30d Sales and Updated Last 30d Sales ===
+            dest_sales = max(dest_last_30d, dest_updated_30d)
+            sales_source_used = "Last 30d" if dest_last_30d >= dest_updated_30d else "Updated 30d"
             
-            # 🚫 Blocking rules: Set qty to 0 but keep in recommendations
-            skip_transfer = False
-            skip_reason = ''
-            
-            if src_shop == dest_shop:
-                skip_transfer = True
-                skip_reason = 'Source and destination are the same'
-                logger.info(f"⏭️ Blocking {item} {src_shop}→{dest_shop}: Same shop")
-            
-            # 🚫 RULE: Source shop is a priority shop - set qty to 0 and show in list
-            if not skip_transfer and src_shop in Config.PRIORITY_SHOPS:
-                skip_transfer = True
-                skip_reason = 'These are priority shop'
-                logger.info(f"⏭️ Setting qty=0 for {item} {src_shop}→{dest_shop}: Source is priority shop")
-            
-            # 🚫 NEW RULE 3: Block if both sales are zero
-            if not skip_transfer and src_sales == 0 and dest_sales == 0:
-                # Check if source GRN is N/A
-                if pd.isna(src_last_grn):
-                    skip_transfer = True
-                    skip_reason = 'GRN not available'
-                    logger.info(f"⏭️ Blocking {item} {src_shop}→{dest_shop}: Source GRN N/A")
-                elif src_grn_age_days > 30 and dest_grn_age_days > 30:
-                    skip_transfer = True
-                    skip_reason = 'src & dest shop has zero sales'
-                    logger.info(f"⏭️ Blocking {item} {src_shop}→{dest_shop}: {skip_reason}")
-                elif src_grn_age_days < 30 or (dest_grn_age_days < 30 and dest_grn_age_days > 0):
-                    # Only block if dest GRN is recent AND NOT null (dest_grn_age_days > 0 means it has a GRN date)
-                    # If dest GRN is N/A (dest_grn_age_days = 0), allow transfer with 30 qty cap
-                    skip_transfer = True
-                    skip_reason = 'Latest GRN'
-                    logger.info(f"⏭️ Blocking {item} {src_shop}→{dest_shop}: {skip_reason} (src GRN: {src_grn_age_days}d, dest GRN: {dest_grn_age_days}d)")
-            
-            # Calculate base recommended qty using existing logic
-            base_recommended_qty = 0
-            
-            # === NEW LOGIC: Track actual destination capacity including allocated ===
-            dest_key = (item, dest_shop)
-            if dest_key not in destination_totals:
-                destination_totals[dest_key] = 0
-            
-            already_allocated = destination_totals[dest_key]
-            current_total_stock = dest_stock + already_allocated  # Current stock + what's already being sent
-            
+            # Calculate base recommended quantity (NO CAP AT ALL)
             if dest_sales > 0:
+                # Sales-based calculation - use MAX(Last 30d, Updated 30d)
                 if dest_stock == 0:
                     base_recommended_qty = dest_sales
                 else:
-                    current_stock_days = dest_stock / dest_sales * 30
-                    base_recommended_qty = max(0, dest_sales - dest_stock) if current_stock_days <= 30 else 0
-            else:  # dest_sales == 0
-                # For zero-sales destinations, cap at 30 units TOTAL (current + allocated)
-                if current_total_stock < 30:
-                    base_recommended_qty = 30 - current_total_stock
-                else:
-                    base_recommended_qty = 0
-            
-            if pd.notna(base_recommended_qty) and base_recommended_qty < 0:
+                    current_stock_days = (dest_stock / dest_sales) * 30
+                    if current_stock_days < 30:
+                        base_recommended_qty = max(0, dest_sales - dest_stock)
+                    else:
+                        base_recommended_qty = 0  # Already has 30+ days stock
+            else:
+                # No sales at all - don't recommend anything
                 base_recommended_qty = 0
-            
-            base_recommended_qty = max(0, base_recommended_qty)
-            
-            # Maximum allowed to destination = 30 units total (for zero-sales shops)
-            # For shops with sales, allow based on sales calculation
-            if dest_sales == 0:
-                max_allowed_to_dest = 30
-                available_capacity = max_allowed_to_dest - current_total_stock
-            else:
-                # For shops with sales, use sales-based calculation (no hard 30-unit cap)
-                available_capacity = base_recommended_qty
-            
-            # If no capacity left or would cause overstocking, mark it
-            will_overstock = False
-            if available_capacity <= 0 or (dest_sales == 0 and current_total_stock >= 30):
-                will_overstock = True
-                logger.info(f"⚠️ {item} → {dest_shop}: Would cause overstocking (current: {dest_stock}, allocated: {already_allocated}, total: {current_total_stock}/30)")
-            
-            # Cap recommended qty to available capacity and available stock
-            # If transfer is blocked by new rule, set qty to 0
-            if skip_transfer:
-                capped_recommended_qty = 0
-            elif will_overstock:
-                capped_recommended_qty = 0
-            else:
-                capped_recommended_qty = min(base_recommended_qty, available_capacity, available)
-            
-            # === WEIGHTED ALLOCATION BY GRN AGE ===
-            # If we need to allocate less than base due to capacity, use GRN age as weight
-            # Priority: Older GRN (higher age_days) gets to send more stock
-            if capped_recommended_qty > 0 and capped_recommended_qty < base_recommended_qty and src_grn_age_days > 0:
-                # Weight factor: normalize GRN age to 0-1 scale (max 365 days = full priority)
-                grn_weight = min(src_grn_age_days / 365.0, 1.0)  # 0 = recent, 1.0 = very old
-                weighted_qty = int(capped_recommended_qty * grn_weight)
-                logger.info(f"📊 {item} {src_shop}→{dest_shop}: GRN age {src_grn_age_days}d, weight={grn_weight:.2f}, qty capped {base_recommended_qty} → {weighted_qty}")
-                capped_recommended_qty = weighted_qty
-            
-            # Update running total for this destination
-            recommended_qty = capped_recommended_qty
-            destination_totals[dest_key] += recommended_qty
-            
-            dest_updated_stock = dest_stock + already_allocated + recommended_qty
-            final_stock_inhand_days = (dest_updated_stock / dest_sales * 30) if dest_sales > 0 else 0
-            final_stock_inhand_days = np.round(final_stock_inhand_days, 1)
 
-            # Set remark: show transfer type, capacity info, or blocking reason
-            if skip_transfer:
-                remark = f'❌ Not recommended: {skip_reason}'
-            elif will_overstock:
-                remark = '❌ Transfer will cause overstocking'
-            elif recommended_qty == 0:
-                remark = ''
-            else:
-                remark = 'Priority transfer' if dest_shop in Config.PRIORITY_SHOPS else 'Normal transfer'
+            base_recommended_qty = max(0, int(base_recommended_qty))
+            
+            # Store ALL priority destinations (even with 0 qty) to show complete picture
+            destination_recommendations.append({
+                'dest_shop': dest_shop,
+                'dest_stock': dest_stock,
+                'dest_last_30d': dest_last_30d,
+                'dest_updated_30d': dest_updated_30d,
+                'dest_wh_grn_plus_30': pd.Timestamp(dest_wh_grn) + pd.Timedelta(days=30) if pd.notna(dest_wh_grn) else pd.NaT,
+                'dest_sales': dest_sales,
+                'sales_source': sales_source_used,
+                'dest_last_grn': dest_last_grn,
+                'dest_wh_grn': dest_wh_grn,
+                'dest_grn_age': dest_grn_age_days,
+                'base_qty': base_recommended_qty,
+                'grn_weight': min(src_grn_age_days / 365.0, 1.0)  # Older GRN = higher priority
+            })
 
-            # Convert GRN dates to timezone-naive for Excel compatibility
-            src_grn_for_export = src_last_grn
+        # Sort destinations by GRN age (prioritize shops with older source GRN)
+        destination_recommendations.sort(key=lambda x: x['grn_weight'], reverse=True)
+
+        # Allocate available stock to destinations
+        remaining_available = available - source_allocations[source_key]
+        
+        for dest_rec in destination_recommendations:
+            # Allocate quantity (capped by remaining available stock)
+            if remaining_available > 0 and dest_rec['base_qty'] > 0:
+                allocated_qty = min(dest_rec['base_qty'], remaining_available)
+                # Update trackers
+                source_allocations[source_key] += allocated_qty
+                remaining_available -= allocated_qty
+            else:
+                allocated_qty = 0
+
+            # Calculate final metrics
+            dest_updated_stock = dest_rec['dest_stock'] + allocated_qty
+            if dest_rec['dest_sales'] > 0:
+                final_stock_days = (dest_updated_stock / dest_rec['dest_sales']) * 30
+            else:
+                final_stock_days = 0
+
+            # Convert GRN dates for export
+            src_grn_export = src_last_grn
             if pd.notna(src_last_grn):
                 src_grn_ts = pd.Timestamp(src_last_grn)
                 if src_grn_ts.tz is not None:
-                    src_grn_for_export = src_grn_ts.tz_localize(None)
+                    src_grn_export = src_grn_ts.tz_localize(None)
             
-            dest_grn_for_export = dest_last_grn
-            if pd.notna(dest_last_grn):
-                dest_grn_ts = pd.Timestamp(dest_last_grn)
+            src_wh_grn_export = src_wh_grn
+            if pd.notna(src_wh_grn):
+                src_wh_grn_ts = pd.Timestamp(src_wh_grn)
+                if src_wh_grn_ts.tz is not None:
+                    src_wh_grn_export = src_wh_grn_ts.tz_localize(None)
+            
+            dest_grn_export = dest_rec['dest_last_grn']
+            if pd.notna(dest_rec['dest_last_grn']):
+                dest_grn_ts = pd.Timestamp(dest_rec['dest_last_grn'])
                 if dest_grn_ts.tz is not None:
-                    dest_grn_for_export = dest_grn_ts.tz_localize(None)
+                    dest_grn_export = dest_grn_ts.tz_localize(None)
+
+            # Determine slow/fast moving status for source only
+            src_slow_moving = 'Yes' if src_sales < threshold else 'No'
+            src_fast_moving = 'Yes' if src_sales >= threshold else 'No'
             
+            # Create remark based on allocated quantity
+            if allocated_qty > 0:
+                remark = f'✅ Priority transfer ({dest_rec["sales_source"]})'
+            elif dest_rec['base_qty'] > 0:
+                remark = '⚠️ No stock available from source'
+            else:
+                remark = 'ℹ️ No transfer needed (sufficient stock)'
+            
+            # Create recommendation record
             recs.append({
                 'ITEM_CODE': item,
                 'Item Name': item_name,
+                'Group': item_group,
+                'Sub Group': item_subgroup,
                 'Source Shop': src_shop,
                 'Source Stock': src_stock,
                 'Source Last 30d Sales': src_sales,
-                'Source Last GRN Date': src_grn_for_export if pd.notna(src_grn_for_export) else 'N/A',
+                'Source Slow Moving': src_slow_moving,
+                'Source Fast Moving': src_fast_moving,
+                'Source Last GRN Date': src_grn_export if pd.notna(src_grn_export) else 'N/A',
+                'Source Last WH GRN Date': src_wh_grn_export if pd.notna(src_wh_grn_export) else 'N/A',
                 'Source GRN Age (days)': src_grn_age_days,
-                'Destination Shop': dest_shop,
-                'Destination Stock': dest_stock,
-                'Destination Last 30d Sales': dest_sales,
-                'Destination Last GRN Date': dest_grn_for_export if pd.notna(dest_grn_for_export) else 'N/A',
-                'Destination GRN Age (days)': dest_grn_age_days,
-                'Recommended_Qty': np.round(recommended_qty, 0),
+                'Destination Shop': dest_rec['dest_shop'],
+                'Destination Stock': dest_rec['dest_stock'],
+                'Destination Last 30d Sales': dest_rec['dest_last_30d'],
+                'Destination Last WH GRN Date': src_wh_grn_export if pd.notna(src_wh_grn_export) else 'N/A',
+                'WH GRN +30 Date': (pd.Timestamp(src_wh_grn_export) + pd.Timedelta(days=30)).strftime('%Y-%m-%d') if pd.notna(src_wh_grn_export) else 'N/A',
+                'Destination Sales (WH GRN +30d)': dest_rec['dest_updated_30d'],
+                'Destination Sales Used': dest_rec['dest_sales'],
+                'Sales Source': dest_rec['sales_source'],
+                'Destination Last GRN Date': dest_grn_export if pd.notna(dest_grn_export) else 'N/A',
+                'Destination GRN Age (days)': dest_rec['dest_grn_age'],
+                'Recommended_Qty': allocated_qty,
                 'Destination Updated Stock': dest_updated_stock,
-                'Destination Final Stock In Hand Days': final_stock_inhand_days,
+                'Destination Final Stock In Hand Days': np.round(final_stock_days, 1),
                 'Remark': remark
             })
 
-            if recommended_qty > 0:
-                available -= recommended_qty
+    # Convert to DataFrame
+    if not recs:
+        logger.warning("No recommendations generated")
+        return pd.DataFrame()
 
     result = pd.DataFrame(recs)
-    if result.empty:
-        logger.warning("No recommendations generated")
-        return result
-
-    # --- sort by priority ---
-    rank = {s: i for i, s in enumerate(Config.PRIORITY_SHOPS)}
-    result['_priority'] = result['Destination Shop'].map(rank).fillna(999)
-    result = result.sort_values(['ITEM_CODE', '_priority', 'Destination Shop'], ignore_index=True)
+    
+    # Ensure ALL items have ALL 11 priority shops represented
+    all_items_in_result = result['ITEM_CODE'].unique()
+    all_priority_combinations = pd.MultiIndex.from_product(
+        [all_items_in_result, Config.PRIORITY_SHOPS],
+        names=['ITEM_CODE', 'Destination Shop']
+    )
+    existing_combinations = pd.MultiIndex.from_frame(
+        result[['ITEM_CODE', 'Destination Shop']]
+    )
+    missing_combinations = all_priority_combinations.difference(existing_combinations)
+    
+    if len(missing_combinations) > 0:
+        logger.info(f"📝 Adding {len(missing_combinations)} missing item-destination combinations (all 11 priority shops)")
+        
+        # Create records for missing combinations
+        missing_recs = []
+        for item_code, dest_shop in missing_combinations:
+            # Get item info from base_df
+            item_info = base_df[base_df['ITEM_CODE'] == item_code].iloc[0] if not base_df[base_df['ITEM_CODE'] == item_code].empty else None
+            
+            if item_info is not None:
+                item_name = item_info.get('ITEM_NAME', 'Unknown')
+                item_group = item_info.get('GROUPS', 'N/A')
+                item_subgroup = item_info.get('SUB_GROUP', 'N/A')
+                
+                # Get destination info
+                dest_info = base_df[(base_df['ITEM_CODE'] == item_code) & (base_df['SHOP_CODE'] == dest_shop)]
+                if not dest_info.empty:
+                    dest_stock = int(dest_info['SHOP_STOCK'].iloc[0] or 0)
+                    dest_last_30d = float(dest_info.get('LAST_30D_SALES', 0).iloc[0] or 0)
+                    dest_updated_30d = float(dest_info.get('UPDATED_LAST_30D_SALES', 0).iloc[0] or 0)
+                    dest_last_grn = dest_info.get('SHOP_GRN_DATE', pd.Series([pd.NaT])).iloc[0]
+                    dest_wh_grn = dest_info.get('WH_GRN_DATE', pd.Series([pd.NaT])).iloc[0]
+                else:
+                    dest_stock = 0
+                    dest_last_30d = 0
+                    dest_updated_30d = 0
+                    dest_last_grn = pd.NaT
+                    dest_wh_grn = pd.NaT
+                
+                dest_grn_age = 0
+                if pd.notna(dest_last_grn):
+                    dest_grn_age = (pd.Timestamp.today() - pd.Timestamp(dest_last_grn)).days
+                
+                missing_recs.append({
+                    'ITEM_CODE': item_code,
+                    'Item Name': item_name,
+                    'Group': item_group,
+                    'Sub Group': item_subgroup,
+                    'Source Shop': 'N/A',
+                    'Source Stock': 0,
+                    'Source Last 30d Sales': 0,
+                    'Source Slow Moving': 'N/A',
+                    'Source Fast Moving': 'N/A',
+                    'Source Last GRN Date': 'N/A',
+                    'Source Last WH GRN Date': 'N/A',
+                    'Source GRN Age (days)': 0,
+                    'Destination Shop': dest_shop,
+                    'Destination Stock': dest_stock,
+                    'Destination Last 30d Sales': dest_last_30d,
+                    'Destination Last WH GRN Date': base_df[base_df['ITEM_CODE'] == item_code]['WH_GRN_DATE'].iloc[0] if not base_df[base_df['ITEM_CODE'] == item_code].empty and pd.notna(base_df[base_df['ITEM_CODE'] == item_code]['WH_GRN_DATE'].iloc[0]) else 'N/A',
+                    'WH GRN +30 Date': (pd.Timestamp(base_df[base_df['ITEM_CODE'] == item_code]['WH_GRN_DATE'].iloc[0]) + pd.Timedelta(days=30)).strftime('%Y-%m-%d') if not base_df[base_df['ITEM_CODE'] == item_code].empty and pd.notna(base_df[base_df['ITEM_CODE'] == item_code]['WH_GRN_DATE'].iloc[0]) else 'N/A',
+                    'Destination Sales (WH GRN +30d)': dest_updated_30d,
+                    'Destination Sales Used': max(dest_last_30d, dest_updated_30d),
+                    'Sales Source': 'Last 30d' if dest_last_30d >= dest_updated_30d else 'Updated 30d',
+                    'Destination Last GRN Date': dest_last_grn if pd.notna(dest_last_grn) else 'N/A',
+                    'Destination GRN Age (days)': dest_grn_age,
+                    'Recommended_Qty': 0,
+                    'Destination Updated Stock': dest_stock,
+                    'Destination Final Stock In Hand Days': 0,
+                    'Remark': 'ℹ️ No source available'
+                })
+        
+        if missing_recs:
+            result = pd.concat([result, pd.DataFrame(missing_recs)], ignore_index=True)
+    
+    # Sort by priority shop order
+    priority_order = {shop: idx for idx, shop in enumerate(Config.PRIORITY_SHOPS)}
+    result['_priority'] = result['Destination Shop'].map(priority_order).fillna(999)
+    result = result.sort_values(['ITEM_CODE', '_priority', 'Source GRN Age (days)'], 
+                                 ascending=[True, True, False], ignore_index=True)
     result = result.drop(columns=['_priority'])
 
     elapsed = time.time() - start_time
-    logger.info(f"⚡ Generated {len(result)} recommendations in fast mode (took {elapsed:.2f}s)")
+    logger.info(f"⚡ Generated {len(result)} recommendations in {elapsed:.2f}s")
+    logger.info(f"📊 Source stock limits enforced for {len(source_allocations)} source combinations")
+    
     return result
 
 
 @st.cache_data(ttl=600, show_spinner=False)
-def cached_generate_recommendations(group: str, subgroup: str, product: str, shop: str, item_type: str, supplier: str, item_name: str, use_grn_logic: bool, threshold: int = 10, use_cache: bool = True) -> pd.DataFrame:
+def cached_generate_recommendations(group: str, subgroup: str, product: str, shop: str, item_type: str, supplier: str, item_name: str, use_grn_logic: bool, threshold: int = 10, use_cache: bool = True, limit: int = None, use_parallel: bool = True) -> pd.DataFrame:
     """
     Cacheable wrapper for ultra-fast recommendations with optional cache support.
     
@@ -1244,13 +1987,32 @@ def cached_generate_recommendations(group: str, subgroup: str, product: str, sho
     
     Args:
         use_cache: Whether to use pre-computed shop cache (default: True)
+        limit: Maximum number of rows to return (for lazy loading)
+        use_parallel: Whether to use multi-threaded execution (default: True)
     """
     import time
+    import hashlib
     t0 = time.time()
     
-    # Try optimized version first (uses mv_recommendation_base or cache)
+    # Check in-memory cache first (MD5 hash of parameters)
+    cache_key = hashlib.md5(
+        f"{group}|{subgroup}|{product}|{shop}|{item_type}|{supplier}|{item_name}|{use_grn_logic}|{threshold}|{limit}".encode()
+    ).hexdigest()
+    
+    if cache_key in st.session_state.rec_cache:
+        cached_result, cache_time = st.session_state.rec_cache[cache_key]
+        # Use cache if less than 5 minutes old
+        if (time.time() - cache_time) < 300:
+            logger.info(f"💾 MEMORY CACHE HIT: {len(cached_result)} recommendations (instant)")
+            return cached_result.copy()
+        else:
+            # Expired - remove from cache
+            del st.session_state.rec_cache[cache_key]
+            logger.info("🔄 Cache expired, regenerating...")
+    
+    # Try optimized version first (uses inventory_master or cache)
     try:
-        logger.info(f"🚀 Attempting ULTRA-FAST recommendation engine (cache={use_cache}, shop={shop})...")
+        logger.info(f"🚀 Attempting ULTRA-FAST recommendation engine (cache={use_cache}, shop={shop}, limit={limit})...")
         result = generate_recommendations_optimized(
             group=group,
             subgroup=subgroup,
@@ -1258,7 +2020,8 @@ def cached_generate_recommendations(group: str, subgroup: str, product: str, sho
             shop=shop,
             use_grn_logic=use_grn_logic,
             threshold=threshold,
-            use_cache=use_cache
+            use_cache=use_cache,
+            limit=limit
         )
         
         if not result.empty:
@@ -1283,6 +2046,13 @@ def cached_generate_recommendations(group: str, subgroup: str, product: str, sho
             
             total_time = time.time() - t0
             logger.info(f"⚡ OPTIMIZED SUCCESS: {len(result)} recommendations in {total_time:.2f}s")
+            
+            # Store in memory cache for instant re-use
+            st.session_state.rec_cache[cache_key] = (result.copy(), time.time())
+            if len(st.session_state.rec_cache) > 10:  # Keep only 10 most recent
+                oldest_key = min(st.session_state.rec_cache.keys(), key=lambda k: st.session_state.rec_cache[k][1])
+                del st.session_state.rec_cache[oldest_key]
+            
             return result
             
     except Exception as e:
@@ -1311,7 +2081,7 @@ def cached_generate_recommendations(group: str, subgroup: str, product: str, sho
 
     # Call the non-cached generator (its result is cached by this wrapper)
     t3 = time.time()
-    result = generate_recommendations(full_df, use_grn_logic)
+    result = generate_recommendations(full_df, use_grn_logic, threshold)
     gen_time = time.time() - t3
     logger.info(f"⏱️ generate_recommendations: {gen_time:.3f}s ({len(result)} recommendations)")
     
@@ -1589,7 +2359,7 @@ def render_header():
         .title-container {{
             display: flex;
             align-items: center;
-            justify-content: center;
+            justify-content: space-between;
             padding: 20px;
             border-radius: 15px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -1601,6 +2371,17 @@ def render_header():
             flex-wrap: wrap;
             box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
             text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            position: sticky !important;
+            top: 0 !important;
+            z-index: 999 !important;
+        }}
+        
+        .title-content {{
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex: 1;
+            gap: 15px;
         }}
         
         @media (max-width: 768px) {{
@@ -1616,13 +2397,18 @@ def render_header():
             }}
         }}
         .data-freshness {{
-            position: absolute;
-            top: 20px;
+            position: sticky;
+            top: 0;
             right: 20px;
             padding: 8px 12px;
             font-size: 11px;
             color: white;
             line-height: 1.4;
+            margin-left: auto;
+            z-index: 999;
+            background: rgba(102, 126, 234, 0.3);
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
         }}
         
         .data-freshness-title {{
@@ -1648,25 +2434,31 @@ def render_header():
             font-weight: 600;
         }}
         
-        @media (max-width: 768px) {{
+        @media (max-width: 767px) {{
             .data-freshness {{
-                position: static;
-                margin: 10px auto 15px;
-                max-width: 280px;
-                background: rgba(255, 255, 255, 0.95);
-                color: #333;
-                border-radius: 8px;
-                padding: 10px 12px;
+                position: static !important;
+                margin: 15px auto 15px !important;
+                max-width: 90% !important;
+                background: rgba(255, 255, 255, 0.95) !important;
+                color: #333 !important;
+                border-radius: 8px !important;
+                padding: 10px 12px !important;
+                top: auto !important;
+                right: auto !important;
             }}
             .data-freshness-title {{
-                color: #667eea;
+                color: #667eea !important;
+                font-size: 0.9rem !important;
+            }}
+            .data-item {{
+                font-size: 0.8rem !important;
             }}
         }}
         </style>
-        <div style="position: relative;">
-            <div class="title-container">
+        <div class="title-container">
+            <div class="title-content">
                 <img src="{Config.LOGO_URL}" alt="Logo" class="melcom-logo" />
-                 MELCOM Inventory Pulse NO_WH
+                <span>MELCOM Inventory Pulse NO_WH</span>
             </div>
             <div class="data-freshness">
                 <div class="data-freshness-title">📅 Data Updated Till</div>
@@ -1686,12 +2478,50 @@ def render_header():
         </div>
     """, unsafe_allow_html=True)
 
+def change_password_in_db(employee_id: str, old_password: str, new_password: str) -> Tuple[bool, str]:
+    """Update password in users database after validation"""
+    try:
+        with get_db_connection('users') as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                # First verify old password
+                cursor.execute("""
+                    SELECT employee_id FROM users
+                    WHERE employee_id = %s AND password = %s AND LOWER(is_active) = 'true'
+                """, (employee_id, old_password))
+                
+                if not cursor.fetchone():
+                    return False, "Invalid employee ID or current password"
+                
+                # Update to new password
+                cursor.execute("""
+                    UPDATE users
+                    SET password = %s
+                    WHERE employee_id = %s
+                """, (new_password, employee_id))
+                
+                conn.commit()
+                
+                # Clear authentication cache to force re-login with new password
+                authenticate_user.clear()
+                
+                logger.info(f"✅ Password changed successfully for: {employee_id}")
+                return True, "Password changed successfully! Please login with your new password."
+                
+    except Exception as e:
+        logger.error(f"Error changing password: {e}")
+        return False, f"Error updating password: {str(e)}"
+
+
 def render_login():
     """Render login page: Employee ID above Password in a centered narrow column.
 
     The Login button is left-aligned under the password field.
     Press Enter to login functionality enabled.
     """
+    
+    # Initialize session state for change password mode
+    if 'show_change_password' not in st.session_state:
+        st.session_state.show_change_password = False
     
     # Custom styling for login page
     st.markdown("""
@@ -1725,33 +2555,93 @@ def render_login():
     # Create a centered narrow column to reduce input width
     left_col, center_col, right_col = st.columns([1, 0.6, 1])
     with center_col:
-        # Use form to enable Enter key submission
-        with st.form(key="login_form", clear_on_submit=False):
-            employee_id = st.text_input("👤 Employee ID")
-            password = st.text_input("🔑 Password", type="password")
+        # Toggle between login and change password
+        if not st.session_state.show_change_password:
+            # === LOGIN MODE ===
+            with st.form(key="login_form", clear_on_submit=False):
+                employee_id = st.text_input("👤 Employee ID")
+                password = st.text_input("🔑 Password", type="password")
 
-            # Left-aligned login button beneath the inputs
-            btn_col1, btn_col2 = st.columns([1, 3])
-            with btn_col1:
-                login_clicked = st.form_submit_button("Login", width='stretch')
-            with btn_col2:
-                st.write("")
-            
-            # Handle login when button clicked or Enter pressed
-            if login_clicked:
-                if not employee_id or not password:
-                    st.warning("⚠️ Enter both Employee ID and Password")
-                else:
-                    with st.spinner("Authenticating..."):
-                        user = authenticate_user(employee_id, password)
-
-                    if user:
-                        st.session_state.logged_in = True
-                        st.session_state.user = user
-                        st.success(f"✅ Welcome, {user['full_name']}")
-                        st.rerun()
+                # Left-aligned login button beneath the inputs
+                btn_col1, btn_col2 = st.columns([1, 3])
+                with btn_col1:
+                    login_clicked = st.form_submit_button("Login", type="primary")
+                with btn_col2:
+                    st.write("")
+                
+                # Handle login when button clicked or Enter pressed
+                if login_clicked:
+                    if not employee_id or not password:
+                        st.warning("⚠️ Enter both Employee ID and Password")
                     else:
-                        st.error("❌ Invalid credentials")
+                        with st.spinner("Authenticating..."):
+                            user = authenticate_user(employee_id, password)
+
+                        if user:
+                            st.session_state.logged_in = True
+                            st.session_state.user = user
+                            st.success(f"✅ Welcome, {user['full_name']}")
+                            st.rerun()
+                        else:
+                            st.error("❌ Invalid credentials")
+            
+            # Change password link
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("🔑 Change Password", use_container_width=True):
+                st.session_state.show_change_password = True
+                st.rerun()
+                
+        else:
+            # === CHANGE PASSWORD MODE ===
+            st.markdown("""
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <h3 style="color: #667eea;">🔑 Change Password</h3>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            with st.form(key="change_password_form", clear_on_submit=False):
+                emp_id = st.text_input("👤 Employee ID")
+                old_pwd = st.text_input("🔑 Current Password", type="password")
+                new_pwd = st.text_input("🆕 New Password", type="password")
+                confirm_pwd = st.text_input("✅ Confirm New Password", type="password")
+                
+                btn_col1, btn_col2 = st.columns([1, 1])
+                with btn_col1:
+                    change_clicked = st.form_submit_button("Change Password", type="primary")
+                with btn_col2:
+                    cancel_clicked = st.form_submit_button("Cancel")
+                
+                if cancel_clicked:
+                    st.session_state.show_change_password = False
+                    st.rerun()
+                
+                if change_clicked:
+                    # Validation
+                    if not emp_id or not old_pwd or not new_pwd or not confirm_pwd:
+                        st.warning("⚠️ Please fill in all fields")
+                    elif new_pwd != confirm_pwd:
+                        st.error("❌ New passwords do not match")
+                    elif len(new_pwd) < 4:
+                        st.warning("⚠️ Password must be at least 4 characters")
+                    elif old_pwd == new_pwd:
+                        st.warning("⚠️ New password must be different from current password")
+                    else:
+                        with st.spinner("Updating password..."):
+                            success, message = change_password_in_db(emp_id, old_pwd, new_pwd)
+                        
+                        if success:
+                            st.success(message)
+                            st.session_state.show_change_password = False
+                            time.sleep(2)
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {message}")
+            
+            # Back to login link
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("← Back to Login", use_container_width=True):
+                st.session_state.show_change_password = False
+                st.rerun()
 
 def render_base_filters(filter_df: pd.DataFrame) -> Tuple[str, str, str, str]:
     """Render base filters in the sidebar (Groups, Sub Group, Product Code, Shop Code)"""
@@ -1916,48 +2806,241 @@ def main():
         layout="wide"
     )
     
-    # Add responsive CSS
+    # Add comprehensive responsive CSS for all screen sizes
     st.markdown("""
         <style>
-        /* Mobile-first responsive design */
-        @media (max-width: 768px) {
-            .stButton > button {
-                width: 100%;
-                margin: 5px 0;
+        /* ========================================
+           ZOOM AND SCALE RESPONSIVE
+           Makes dashboard adapt to browser zoom (Ctrl+/-)
+        ======================================== */
+        html {
+            -webkit-text-size-adjust: 100%;
+            -ms-text-size-adjust: 100%;
+            text-size-adjust: 100%;
+        }
+        
+        body {
+            font-size: clamp(12px, 1vw, 16px);
+            overflow-x: hidden;
+        }
+        
+        /* ========================================
+           STICKY HEADER
+        ======================================== */
+        .title-container {
+            position: sticky !important;
+            top: 0 !important;
+            z-index: 999 !important;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+        }
+        
+        /* Data freshness - position below sticky header */
+        .data-freshness {
+            z-index: 998 !important;
+        }
+        
+        /* Main container - prevent overflow on zoom */
+        .main .block-container {
+            max-width: 100% !important;
+            padding: clamp(1rem, 3vw, 2rem) clamp(0.5rem, 2vw, 1rem) !important;
+        }
+        
+        /* Sidebar - scale with zoom */
+        section[data-testid="stSidebar"] {
+            width: clamp(200px, 20vw, 300px) !important;
+        }
+        
+        section[data-testid="stSidebar"] .css-ng1t4o {
+            width: clamp(200px, 20vw, 300px) !important;
+        }
+        
+        /* Mobile: Collapse sidebar by default on phones */
+        @media (max-width: 767px) {
+            /* Hide sidebar initially on mobile */
+            section[data-testid="stSidebar"] {
+                margin-left: -100% !important;
+                transition: margin-left 0.3s ease-in-out;
             }
-            .row-widget.stSelectbox {
-                width: 100%;
+            
+            /* When sidebar is opened */
+            section[data-testid="stSidebar"][aria-expanded="true"] {
+                margin-left: 0 !important;
+                width: 80% !important;
+                max-width: 300px !important;
+                z-index: 1000 !important;
+                box-shadow: 2px 0 10px rgba(0,0,0,0.3);
             }
-            div[data-testid="column"] {
-                width: 100% !important;
-                flex: 1 1 100% !important;
-                min-width: 100% !important;
+            
+            /* Hamburger menu button styling */
+            button[kind="header"] {
+                display: block !important;
+                position: fixed !important;
+                top: 10px !important;
+                left: 10px !important;
+                z-index: 1001 !important;
+                background: white !important;
+                border-radius: 8px !important;
+                padding: 8px 12px !important;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.2) !important;
             }
-            .stDataFrame {
-                overflow-x: auto;
+            
+            /* Make sidebar close button visible and prominent */
+            section[data-testid="stSidebar"] button[kind="header"] {
+                display: block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                background: #667eea !important;
+                color: white !important;
+                border-radius: 50% !important;
+                width: 40px !important;
+                height: 40px !important;
+                padding: 8px !important;
+                position: absolute !important;
+                top: 10px !important;
+                right: 10px !important;
+                z-index: 1002 !important;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+                border: 2px solid white !important;
             }
-            h1, h2, h3 {
-                font-size: 1.2rem !important;
+            
+            /* Style the collapse icon */
+            section[data-testid="stSidebar"] button[kind="header"] svg {
+                fill: white !important;
+                width: 20px !important;
+                height: 20px !important;
+            }
+            
+            /* Add visual indicator on hover/tap */
+            section[data-testid="stSidebar"] button[kind="header"]:hover,
+            section[data-testid="stSidebar"] button[kind="header"]:active {
+                background: #764ba2 !important;
+                transform: scale(1.1);
+                transition: all 0.2s ease;
+            }
+            
+            /* Main content - full width on mobile */
+            .main .block-container {
+                padding-left: 1rem !important;
+                padding-right: 1rem !important;
+                max-width: 100% !important;
+            }
+            
+            /* Title container - adjust for mobile */
+            .title-container {
+                padding-left: 50px !important;
+                font-size: 1rem !important;
+            }
+            
+            .melcom-logo {
+                height: 30px !important;
+                width: 30px !important;
             }
         }
         
-        @media (min-width: 769px) and (max-width: 1024px) {
-            /* Tablet adjustments */
-            div[data-testid="column"] {
-                padding: 0 0.5rem;
-            }
+        /* Headings - fluid sizing */
+        h1 {
+            font-size: clamp(1.2rem, 3vw, 2.2rem) !important;
+            line-height: 1.2 !important;
         }
         
-        /* Make tables horizontally scrollable */
-        .dataframe-container {
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
+        h2 {
+            font-size: clamp(1rem, 2.5vw, 1.8rem) !important;
+            line-height: 1.3 !important;
         }
         
-        /* Improve button visibility on mobile */
+        h3, h4 {
+            font-size: clamp(0.9rem, 2vw, 1.5rem) !important;
+            line-height: 1.4 !important;
+        }
+        
+        /* Metrics - scale with zoom */
+        [data-testid="stMetricValue"] {
+            font-size: clamp(1.2rem, 2.5vw, 2.2rem) !important;
+        }
+        
+        [data-testid="stMetricLabel"] {
+            font-size: clamp(0.7rem, 1.2vw, 1.1rem) !important;
+        }
+        
+        /* Buttons - prevent overflow */
+        .stButton > button,
         .stDownloadButton > button {
-            width: 100%;
+            font-size: clamp(0.8rem, 1vw, 1rem) !important;
+            padding: clamp(0.4rem, 0.8vw, 0.6rem) clamp(0.8rem, 1.5vw, 1.2rem) !important;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
+        
+        /* Columns - stack on high zoom */
+        div[data-testid="column"] {
+            min-width: 0 !important;
+            flex-shrink: 1;
+        }
+        
+        /* Tables - scroll on zoom instead of break */
+        .stDataFrame {
+            width: 100% !important;
+            overflow-x: auto !important;
+            font-size: clamp(0.7rem, 1vw, 1rem) !important;
+        }
+        
+        .dataframe-container {
+            overflow-x: auto !important;
+            max-width: 100vw !important;
+        }
+        
+        /* Selectbox and inputs - scale properly */
+        .stSelectbox label,
+        .stNumberInput label,
+        .stMultiSelect label {
+            font-size: clamp(0.8rem, 1.1vw, 1rem) !important;
+        }
+        
+        .stSelectbox select,
+        .stNumberInput input {
+            font-size: clamp(0.8rem, 1vw, 0.95rem) !important;
+        }
+        
+        /* Tabs - prevent overflow */
+        .stTabs [data-baseweb="tab-list"] {
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+        
+        .stTabs [data-baseweb="tab"] {
+            font-size: clamp(0.8rem, 1vw, 1rem) !important;
+            padding: clamp(0.3rem, 0.6vw, 0.5rem) clamp(0.8rem, 1.5vw, 1rem) !important;
+        }
+        
+        /* Charts - scale with container */
+        .js-plotly-plot {
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+        
+        .js-plotly-plot .plotly {
+            width: 100% !important;
+        }
+        
+        /* Caption text - scale */
+        .caption, [class*="caption"] {
+            font-size: clamp(0.7rem, 0.9vw, 0.85rem) !important;
+        }
+        
+        /* Info boxes - scale */
+        .stAlert, [data-testid="stAlert"] {
+            font-size: clamp(0.75rem, 1vw, 0.9rem) !important;
+            padding: clamp(0.5rem, 1vw, 0.75rem) !important;
+        }
+        
+        /* Expander - scale */
+        .streamlit-expanderHeader {
+            font-size: clamp(0.85rem, 1.1vw, 1rem) !important;
+        }
+        
+        /* Base styles - Desktop (1601px+) */
         
         /* Format dataframe columns properly */
         .stDataFrame div[data-testid="stDataFrameResizable"] table tbody tr td,
@@ -1986,6 +3069,331 @@ def main():
         .stDataFrame div[data-testid="stDataFrameResizable"] table tbody tr td:has(div:matches('[0-9]+')) {
             text-align: right !important;
             padding-right: 10px !important;
+        }
+        
+        /* Make tables horizontally scrollable on all devices */
+        .dataframe-container {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .stDataFrame {
+            overflow-x: auto;
+        }
+        
+        /* Plotly charts responsive */
+        .js-plotly-plot {
+            width: 100% !important;
+        }
+        
+        /* ========================================
+           SMALL PHONES (320px - 480px)
+           iPhone SE, small Androids
+        ======================================== */
+        @media (max-width: 480px) {
+            body {
+                font-size: 12px;
+            }
+            
+            h1 {
+                font-size: 1.2rem !important;
+            }
+            
+            h2 {
+                font-size: 1.1rem !important;
+            }
+            
+            h3, h4 {
+                font-size: 1rem !important;
+            }
+            
+            /* Stack all columns vertically */
+            div[data-testid="column"] {
+                width: 100% !important;
+                flex: 1 1 100% !important;
+                min-width: 100% !important;
+                margin-bottom: 1rem;
+            }
+            
+            /* Full width buttons */
+            .stButton > button,
+            .stDownloadButton > button {
+                width: 100% !important;
+                margin: 5px 0;
+                font-size: 0.9rem;
+            }
+            
+            /* Compact selectboxes */
+            .row-widget.stSelectbox {
+                width: 100%;
+            }
+            
+            /* Smaller metrics */
+            [data-testid="stMetricValue"] {
+                font-size: 1.2rem !important;
+            }
+            
+            [data-testid="stMetricLabel"] {
+                font-size: 0.8rem !important;
+            }
+            
+            /* Hide pie chart on very small screens, keep table full width */
+            .stDataFrame {
+                font-size: 0.75rem;
+            }
+            
+            /* Sidebar adjustments */
+            section[data-testid="stSidebar"] {
+                min-width: 100% !important;
+            }
+        }
+        
+        /* ========================================
+           LARGE PHONES (481px - 767px)
+           iPhone 17 Pro Max, Samsung Z Fold (unfolded inner), Pixel
+        ======================================== */
+        @media (min-width: 481px) and (max-width: 767px) {
+            body {
+                font-size: 14px;
+            }
+            
+            h1 {
+                font-size: 1.4rem !important;
+            }
+            
+            h2 {
+                font-size: 1.2rem !important;
+            }
+            
+            h3 {
+                font-size: 1.1rem !important;
+            }
+            
+            /* Stack columns on large phones */
+            div[data-testid="column"] {
+                width: 100% !important;
+                flex: 1 1 100% !important;
+                min-width: 100% !important;
+                margin-bottom: 0.75rem;
+            }
+            
+            .stButton > button,
+            .stDownloadButton > button {
+                width: 100%;
+                margin: 5px 0;
+            }
+            
+            [data-testid="stMetricValue"] {
+                font-size: 1.4rem !important;
+            }
+            
+            [data-testid="stMetricLabel"] {
+                font-size: 0.85rem !important;
+            }
+            
+            .stDataFrame {
+                font-size: 0.8rem;
+            }
+        }
+        
+        /* ========================================
+           TABLETS - Portrait (768px - 1024px)
+           iPad, iPad Air, Samsung Galaxy Tab
+        ======================================== */
+        @media (min-width: 768px) and (max-width: 1024px) {
+            body {
+                font-size: 15px;
+            }
+            
+            h1 {
+                font-size: 1.6rem !important;
+            }
+            
+            h2 {
+                font-size: 1.4rem !important;
+            }
+            
+            h3 {
+                font-size: 1.2rem !important;
+            }
+            
+            /* Two-column layout for tablets */
+            div[data-testid="column"] {
+                padding: 0 0.5rem;
+            }
+            
+            [data-testid="stMetricValue"] {
+                font-size: 1.6rem !important;
+            }
+            
+            [data-testid="stMetricLabel"] {
+                font-size: 0.9rem !important;
+            }
+            
+            .stDataFrame {
+                font-size: 0.85rem;
+            }
+            
+            /* Adjust pie chart size */
+            .js-plotly-plot {
+                max-height: 350px;
+            }
+        }
+        
+        /* ========================================
+           LARGE TABLETS / SMALL LAPTOPS (1025px - 1366px)
+           iPad Pro, Surface Pro, small laptops
+        ======================================== */
+        @media (min-width: 1025px) and (max-width: 1366px) {
+            body {
+                font-size: 15px;
+            }
+            
+            h1 {
+                font-size: 1.8rem !important;
+            }
+            
+            h2 {
+                font-size: 1.5rem !important;
+            }
+            
+            h3 {
+                font-size: 1.3rem !important;
+            }
+            
+            [data-testid="stMetricValue"] {
+                font-size: 1.8rem !important;
+            }
+            
+            [data-testid="stMetricLabel"] {
+                font-size: 0.95rem !important;
+            }
+            
+            .stDataFrame {
+                font-size: 0.9rem;
+            }
+            
+            .js-plotly-plot {
+                max-height: 400px;
+            }
+        }
+        
+        /* ========================================
+           STANDARD LAPTOPS (1367px - 1600px)
+           13-15 inch laptops, standard displays
+        ======================================== */
+        @media (min-width: 1367px) and (max-width: 1600px) {
+            body {
+                font-size: 16px;
+            }
+            
+            h1 {
+                font-size: 2rem !important;
+            }
+            
+            h2 {
+                font-size: 1.6rem !important;
+            }
+            
+            h3 {
+                font-size: 1.4rem !important;
+            }
+            
+            [data-testid="stMetricValue"] {
+                font-size: 2rem !important;
+            }
+            
+            [data-testid="stMetricLabel"] {
+                font-size: 1rem !important;
+            }
+            
+            .stDataFrame {
+                font-size: 0.95rem;
+            }
+        }
+        
+        /* ========================================
+           LARGE SCREENS (1601px+)
+           Large monitors, 4K displays
+        ======================================== */
+        @media (min-width: 1601px) {
+            body {
+                font-size: 16px;
+            }
+            
+            h1 {
+                font-size: 2.2rem !important;
+            }
+            
+            h2 {
+                font-size: 1.8rem !important;
+            }
+            
+            h3 {
+                font-size: 1.5rem !important;
+            }
+            
+            [data-testid="stMetricValue"] {
+                font-size: 2.2rem !important;
+            }
+            
+            [data-testid="stMetricLabel"] {
+                font-size: 1.1rem !important;
+            }
+            
+            .stDataFrame {
+                font-size: 1rem;
+            }
+        }
+        
+        /* ========================================
+           LANDSCAPE ORIENTATION ADJUSTMENTS
+        ======================================== */
+        @media (max-width: 1024px) and (orientation: landscape) {
+            /* Optimize for landscape mode on tablets/phones */
+            div[data-testid="column"] {
+                padding: 0 0.3rem;
+            }
+            
+            h1, h2, h3 {
+                margin-top: 0.5rem !important;
+                margin-bottom: 0.5rem !important;
+            }
+        }
+        
+        /* ========================================
+           TOUCH DEVICE OPTIMIZATIONS
+        ======================================== */
+        @media (hover: none) and (pointer: coarse) {
+            /* Larger touch targets for mobile devices */
+            .stButton > button,
+            .stDownloadButton > button {
+                min-height: 44px;
+                padding: 12px 20px;
+            }
+            
+            /* Better spacing for touch */
+            .stSelectbox, .stNumberInput, .stCheckbox {
+                margin-bottom: 1rem;
+            }
+        }
+        
+        /* ========================================
+           PRINT STYLES
+        ======================================== */
+        @media print {
+            /* Hide sidebar and buttons when printing */
+            section[data-testid="stSidebar"],
+            .stButton,
+            .stDownloadButton {
+                display: none !important;
+            }
+            
+            /* Full width for content */
+            .main .block-container {
+                max-width: 100% !important;
+                padding: 0 !important;
+            }
         }
         </style>
     """, unsafe_allow_html=True)
@@ -2078,6 +3486,18 @@ def main():
 
     # Apply Item Details (SIT) filters if selected
     inventory_df = apply_itemdetails_filters(inventory_df, sit_filter_df, item_type, supplier, item_name)
+    
+    # Merge TYPE information from mv_sit_itemdetails for pie chart
+    if not sit_filter_df.empty:
+        # Create a mapping of ITEM_CODE to TYPE
+        sit_type_map = sit_filter_df.copy()
+        sit_type_map['ITEM_CODE'] = sit_type_map['vc_item_code'].astype(str).str.strip().str.upper()
+        sit_type_map = sit_type_map[['ITEM_CODE', 'type']].drop_duplicates(subset=['ITEM_CODE'])
+        sit_type_map.columns = ['ITEM_CODE', 'TYPE']
+        
+        # Merge TYPE into inventory_df
+        inventory_df = inventory_df.merge(sit_type_map, on='ITEM_CODE', how='left')
+        inventory_df['TYPE'] = inventory_df['TYPE'].fillna('Unknown')
 
     if inventory_df.empty:
         st.warning("No records found")
@@ -2097,7 +3517,6 @@ def main():
     avg_sales = inventory_df['ITEM_SALES_30_DAYS'].mean()
     total_sales_qty = inventory_df['ITEM_SALES_30_DAYS'].sum()
     
-    st.sidebar.metric("📦 Total Records", total_items)
     st.sidebar.metric("✅ Items with Sales", f"{items_with_sales} ({items_with_sales/total_items*100:.1f}%)")
     st.sidebar.metric("📈 Total Sales Qty", f"{int(total_sales_qty):,}")
     st.sidebar.metric("🎯 Max 30d Sales", int(max_sales))
@@ -2358,34 +3777,93 @@ def main():
     
     with tab1:
         st.caption(f"{len(slow_shops)} records | Total Sales: {int(slow_shops['ITEM_SALES_30_DAYS'].sum()):,} | Total Stock: {slow_total_stock:,}")
-        if not slow_shops.empty:
-            # Very compact pixel widths to match screenshot
-            col_config = {}
-            for col in slow_shops.columns:
-                if col == 'SHOP_CODE':
-                    col_config[col] = st.column_config.TextColumn(col, width=50)
-                elif col == 'ITEM_CODE':
-                    col_config[col] = st.column_config.TextColumn(col, width=50)
-                elif col == 'ITEM_NAME':
-                    col_config[col] = st.column_config.TextColumn(col, width=400)
-                elif col == 'SHOP_STOCK':
-                    col_config[col] = st.column_config.NumberColumn(col, width=60)
-                elif col == 'ITEM_SALES_30_DAYS':
-                    col_config[col] = st.column_config.NumberColumn(col, width=150)
-                elif col == 'Sales_Status':
-                    col_config[col] = st.column_config.TextColumn(col, width=100)
-                elif col in ['GROUPS']:
-                    col_config[col] = st.column_config.TextColumn(col, width=190)
-                elif col in ['SUB_GROUP']:    
-                    col_config[col] = st.column_config.TextColumn(col, width=300)
-                elif col == 'SHOP_GRN_DATE':
-                    col_config[col] = st.column_config.Column(col, width=170)
-                else:
-                    col_config[col] = st.column_config.Column(col, width=60)
-            
-            st.dataframe(slow_shops, height=400, hide_index=True, column_config=col_config, use_container_width=False)
-        else:
-            st.info("✅ No slow-moving items found")
+        
+        # Create two columns: table on left, pie chart on right
+        col_table, col_chart = st.columns([3, 1])
+        
+        with col_chart:
+            # Create pie chart for Direct Import vs Local (slow-moving items only)
+            if not slow_shops.empty and 'TYPE' in slow_shops.columns:
+                # Get unique items count by TYPE
+                type_counts = slow_shops.groupby('TYPE')['ITEM_CODE'].nunique().reset_index()
+                type_counts.columns = ['Type', 'Unique Items']
+                
+                # Calculate percentages
+                total_unique = type_counts['Unique Items'].sum()
+                type_counts['Percentage'] = (type_counts['Unique Items'] / total_unique * 100).round(1)
+                
+                # Create pie chart
+                fig = go.Figure(data=[go.Pie(
+                    labels=type_counts['Type'],
+                    values=type_counts['Unique Items'],
+                    hole=0.4,
+                    marker=dict(
+                        colors=['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8'],
+                        line=dict(color='white', width=2)
+                    ),
+                    textinfo='label+percent',
+                    textposition='outside',
+                    hovertemplate='<b>%{label}</b><br>' +
+                                  'Items: %{value:,}<br>' +
+                                  'Percentage: %{percent}<br>' +
+                                  '<extra></extra>'
+                )])
+                
+                fig.update_layout(
+                    title={
+                        'text': f'Slow-Moving Items by Type<br><sub>{total_unique:,} Unique Items</sub>',
+                        'x': 0.5,
+                        'xanchor': 'center',
+                        'font': {'size': 14, 'color': '#333'}
+                    },
+                    height=400,
+                    showlegend=True,
+                    legend=dict(
+                        orientation="v",
+                        yanchor="middle",
+                        y=0.5,
+                        xanchor="left",
+                        x=1.05,
+                        font=dict(size=10)
+                    ),
+                    margin=dict(l=10, r=10, t=80, b=10)
+                )
+                
+                st.plotly_chart(fig, use_container_width=True, key="slow_type_pie")
+            else:
+                st.info("📊 Type information not available")
+        
+        with col_table:
+            if not slow_shops.empty:
+                # Very compact pixel widths to match screenshot
+                col_config = {}
+                for col in slow_shops.columns:
+                    if col == 'SHOP_CODE':
+                        col_config[col] = st.column_config.TextColumn(col, width=50)
+                    elif col == 'ITEM_CODE':
+                        col_config[col] = st.column_config.TextColumn(col, width=50)
+                    elif col == 'ITEM_NAME':
+                        col_config[col] = st.column_config.TextColumn(col, width=400)
+                    elif col == 'SHOP_STOCK':
+                        col_config[col] = st.column_config.NumberColumn(col, width=60)
+                    elif col == 'ITEM_SALES_30_DAYS':
+                        col_config[col] = st.column_config.NumberColumn(col, width=150)
+                    elif col == 'Sales_Status':
+                        col_config[col] = st.column_config.TextColumn(col, width=100)
+                    elif col in ['GROUPS']:
+                        col_config[col] = st.column_config.TextColumn(col, width=190)
+                    elif col in ['SUB_GROUP']:    
+                        col_config[col] = st.column_config.TextColumn(col, width=300)
+                    elif col == 'SHOP_GRN_DATE':
+                        col_config[col] = st.column_config.Column(col, width=170)
+                    elif col == 'TYPE':
+                        col_config[col] = st.column_config.TextColumn(col, width=120)
+                    else:
+                        col_config[col] = st.column_config.Column(col, width=60)
+                
+                st.dataframe(slow_shops, height=400, hide_index=True, column_config=col_config, use_container_width=True)
+            else:
+                st.info("✅ No slow-moving items found")
     
     with tab2:
         st.caption(f"{len(fast_shops)} records | Total Sales: {int(fast_shops['ITEM_SALES_30_DAYS'].sum()):,} | Total Stock: {fast_total_stock:,}")
@@ -2414,7 +3892,7 @@ def main():
                 else:
                     col_config[col] = st.column_config.Column(col, width=60)
             
-            st.dataframe(fast_shops, height=400, hide_index=True, column_config=col_config, use_container_width=False)
+            st.dataframe(fast_shops, height=400, hide_index=True, column_config=col_config, use_container_width=True)
         else:
             st.info(f"ℹ️ No items with sales >= {threshold}. Try lowering the threshold.")
     
@@ -2439,6 +3917,14 @@ def main():
                 <div style="font-size: 12px; opacity: 0.9; margin-top: 5px;">Data above is filtered. Click button below for transfer recommendations.</div>
             </div>
         """, unsafe_allow_html=True)
+    
+    # Checkbox to generate complete recommendations without any limit
+    generate_all = st.checkbox(
+        "📊 Generate ALL recommendations without limit",
+        value=False,
+        key="generate_all_checkbox",
+        help="When checked, generates complete recommendations based on selected filters without any row limit. May take longer for large datasets."
+    )
     
     btn_col1, btn_col2, btn_col3 = st.columns([1.5, 1, 1.5])
     with btn_col2:
@@ -2476,6 +3962,17 @@ def main():
             status_text.text("⚡ Generating recommendations...")
             progress_bar.progress(60)
 
+            # Determine if lazy loading needed based on checkbox
+            if generate_all:
+                # Checkbox CHECKED: Generate ALL recommendations without any limit
+                limited_load = False
+                row_limit = None
+                status_text.text("⚡ Generating ALL recommendations (no limit)...")
+            else:
+                # Checkbox UNCHECKED: Use existing logic (50k limit when all filters = 'All')
+                limited_load = (group == 'All' and subgroup == 'All' and product == 'All' and shop == 'All')
+                row_limit = 50000 if limited_load else None
+            
             # Use cached wrapper which tries cache first for single shop queries
             recommendations = cached_generate_recommendations(
                 group=group,
@@ -2487,9 +3984,32 @@ def main():
                 item_name=item_name,
                 use_grn_logic=use_grn_logic,
                 threshold=threshold,
-                use_cache=True  # Use cache for instant shop-specific results
+                use_cache=True,  # Use cache for instant shop-specific results
+                limit=row_limit,  # Use determined limit based on checkbox
+                use_parallel=True  # Enable multi-threading
             )
-
+            
+            # CRITICAL: Filter recommendations to ONLY priority shops immediately after generation
+            if not recommendations.empty and 'Destination Shop' in recommendations.columns:
+                initial_count = len(recommendations)
+                non_priority = recommendations[~recommendations['Destination Shop'].isin(Config.PRIORITY_SHOPS)]
+                
+                if len(non_priority) > 0:
+                    non_priority_shops = non_priority['Destination Shop'].unique()
+                    logger.warning(f"⚠️ FILTERING OUT {len(non_priority)} recommendations to non-priority shops: {non_priority_shops}")
+                    status_text.text(f"🔍 Filtering to priority shops only...")
+                    recommendations = recommendations[recommendations['Destination Shop'].isin(Config.PRIORITY_SHOPS)]
+                    logger.info(f"✅ Filtered: {initial_count} → {len(recommendations)} recommendations (priority shops only)")
+                    st.info(f"ℹ️ Filtered to {len(recommendations)} recommendations (Priority Shops: {', '.join(Config.PRIORITY_SHOPS)})")
+                else:
+                    logger.info(f"✅ All {len(recommendations)} recommendations already to priority shops")
+            
+            # Show info message based on checkbox state
+            if generate_all:
+                st.success(f"✅ Generated ALL {len(recommendations):,} recommendations without any limit!")
+            elif limited_load and len(recommendations) >= 50000:
+                st.info(f"ℹ️ Showing first {len(recommendations):,} recommendations. Check '📊 Generate ALL recommendations' above and regenerate for complete dataset.")
+            
             # No need to filter by shop again - already done in optimized query
 
             progress_bar.progress(100)
@@ -2513,23 +4033,37 @@ def main():
         if not recommendations.empty:
             # Format columns only once and store in session state
             if 'final_recs' not in st.session_state or gen_clicked:
-                # Add Sales_Status column by merging with inventory_df
-                recommendations_with_status = recommendations.merge(
-                    inventory_df[['ITEM_CODE', 'SHOP_CODE', 'Sales_Status']].rename(columns={'SHOP_CODE': 'Source Shop'}),
-                    left_on=['ITEM_CODE', 'Source Shop'],
-                    right_on=['ITEM_CODE', 'Source Shop'],
-                    how='left'
-                )
-                recommendations_with_status['Sales_Status'] = recommendations_with_status['Sales_Status'].fillna('Slow')
+                # Recommendations now include Sales_Status via Slow/Fast Moving columns
+                # No need to merge - just use the columns directly
+                recommendations_display = recommendations.copy()
                 
+                # If Sales_Status column doesn't exist (from old cache), create it
+                if 'Sales_Status' not in recommendations_display.columns:
+                    # Merge to get Sales_Status from inventory
+                    recommendations_display = recommendations_display.merge(
+                        inventory_df[['ITEM_CODE', 'SHOP_CODE', 'Sales_Status']].rename(columns={'SHOP_CODE': 'Source Shop'}),
+                        left_on=['ITEM_CODE', 'Source Shop'],
+                        right_on=['ITEM_CODE', 'Source Shop'],
+                        how='left'
+                    )
+                    recommendations_display['Sales_Status'] = recommendations_display['Sales_Status'].fillna('Slow')
+                
+                # Define column order with all new columns
                 preferred_cols = [
-                    'ITEM_CODE', 'Item Name', 'Sales_Status',
-                    'Source Shop', 'Source Stock', 'Source Last 30d Sales', 'Source Last GRN Date', 'Source GRN Age (days)',
-                    'Destination Shop', 'Destination Stock', 'Destination Last 30d Sales', 'Destination Last GRN Date', 'Destination GRN Age (days)',
+                    'ITEM_CODE', 'Item Name', 'Group', 'Sub Group', 'Sales_Status',
+                    'Source Shop', 'Source Stock', 'Source Last 30d Sales', 
+                    'Source Slow Moving', 'Source Fast Moving',
+                    'Source Last GRN Date', 'Source Last WH GRN Date', 'Source GRN Age (days)',
+                    'Destination Shop', 'Destination Stock', 
+                    'Destination Last 30d Sales',
+                    'Destination Last WH GRN Date', 'WH GRN +30 Date', 'Destination Sales (WH GRN +30d)',
+                    'Destination Sales Used', 'Sales Source',
+                    'Destination Last GRN Date', 'Destination GRN Age (days)',
+                    'Recommended_Qty',
                     'Destination Updated Stock', 'Destination Final Stock In Hand Days',
-                    'Recommended_Qty', 'Remark'
+                    'Remark'
                 ]
-                final_recs = recommendations_with_status[[c for c in preferred_cols if c in recommendations_with_status.columns]].copy()
+                final_recs = recommendations_display[[c for c in preferred_cols if c in recommendations_display.columns]].copy()
 
                 if not show_grn_info:
                     final_recs = final_recs.drop(columns=['Destination GRN Sales', 'GRN Date', 'Source Last GRN Date', 'Source GRN Age (days)', 'Destination Last GRN Date', 'Destination GRN Age (days)'], errors='ignore')
@@ -2563,33 +4097,66 @@ def main():
             start_idx = st.session_state.page_number * rows_per_page
             end_idx = min(start_idx + rows_per_page, total_rows)
             
-            # Display dataframe with very compact pixel widths
+            # Add CSS to ensure scrollbars are visible
+            st.markdown("""
+                <style>
+                    /* Force scrollbars to be always visible */
+                    div[data-testid="stDataFrame"] > div {
+                        overflow: auto !important;
+                    }
+                    div[data-testid="stDataFrame"] > div > div {
+                        overflow-x: scroll !important;
+                        overflow-y: scroll !important;
+                    }
+                    /* Make scrollbars more visible */
+                    div[data-testid="stDataFrame"]::-webkit-scrollbar {
+                        width: 12px !important;
+                        height: 12px !important;
+                    }
+                    div[data-testid="stDataFrame"]::-webkit-scrollbar-track {
+                        background: #f1f1f1 !important;
+                    }
+                    div[data-testid="stDataFrame"]::-webkit-scrollbar-thumb {
+                        background: #888 !important;
+                        border-radius: 6px !important;
+                    }
+                    div[data-testid="stDataFrame"]::-webkit-scrollbar-thumb:hover {
+                        background: #555 !important;
+                    }
+                </style>
+            """, unsafe_allow_html=True)
+            
+            # Display dataframe with compact widths for better scrolling
             col_config = {}
             for col in final_recs.columns:
                 if col == 'ITEM_CODE':
                     col_config[col] = st.column_config.TextColumn(col, width=70)
-                elif col in ['Source Shop']:
-                    col_config[col] = st.column_config.TextColumn(col, width=90)
-                elif col in ['Destination Shop']:
-                    col_config[col] = st.column_config.TextColumn(col, width=110)    
+                elif col in ['Source Shop', 'Destination Shop']:
+                    col_config[col] = st.column_config.TextColumn(col, width=85)
                 elif col == 'Sales_Status':
-                    col_config[col] = st.column_config.TextColumn(col, width=90)
+                    col_config[col] = st.column_config.TextColumn(col, width=75)
                 elif col == 'Item Name':
-                    col_config[col] = st.column_config.TextColumn(col, width=390)
+                    col_config[col] = st.column_config.TextColumn(col, width=250)
                 elif col == 'Remark':
-                    col_config[col] = st.column_config.TextColumn(col, width=350)
+                    col_config[col] = st.column_config.TextColumn(col, width=200)
+                elif col in ['Group', 'Sub Group']:
+                    col_config[col] = st.column_config.TextColumn(col, width=90)
+                elif 'Moving' in col:
+                    col_config[col] = st.column_config.TextColumn(col, width=70)
                 elif 'Stock' in col or 'Qty' in col:
-                    col_config[col] = st.column_config.NumberColumn(col, width=160)
+                    col_config[col] = st.column_config.NumberColumn(col, width=100)
                 elif 'Sales' in col or 'Age' in col or 'Days' in col:
-                    col_config[col] = st.column_config.NumberColumn(col, width=160)
+                    col_config[col] = st.column_config.NumberColumn(col, width=110)
                 elif 'Date' in col:
-                    col_config[col] = st.column_config.Column(col, width=160)
+                    col_config[col] = st.column_config.Column(col, width=110)
                 else:
-                    col_config[col] = st.column_config.Column(col, width=90)
+                    col_config[col] = st.column_config.Column(col, width=80)
             
+            # Display with proper scrolling - disable container width to allow horizontal scroll
             st.dataframe(
                 final_recs.iloc[start_idx:end_idx], 
-                height=500,
+                height=600,
+                width=3000,
                 hide_index=True,
                 column_config=col_config,
                 use_container_width=False
@@ -2670,18 +4237,51 @@ def main():
             # Download buttons - stack on mobile
             col1, col2 = st.columns([1, 1])
             with col1:
-                # Cache CSV generation
-                if 'csv_data' not in st.session_state or gen_clicked:
-                    st.session_state.csv_data = convert_to_csv(final_recs)
-                
-                st.download_button(
-                    "📥 Download CSV (Complete Data)",
-                    st.session_state.csv_data,
-                    f"recommendations_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                    "text/csv",
-                    key="rec_csv",
-                    use_container_width=True
-                )
+                # For CSV download, regenerate all recommendations without limit if lazy loading was applied
+                if limited_load and len(recommendations) >= 5000:
+                    # Show button to generate complete dataset
+                    if st.button("🔄 Generate Complete Data for Download", key="gen_complete_btn", use_container_width=True):
+                        with st.spinner("Generating complete dataset..."):
+                            complete_recs = cached_generate_recommendations(
+                                group=group,
+                                subgroup=subgroup,
+                                product=product,
+                                shop=shop,
+                                item_type=item_type,
+                                supplier=supplier,
+                                item_name=item_name,
+                                use_grn_logic=use_grn_logic,
+                                threshold=threshold,
+                                use_cache=False,  # Skip cache for complete dataset
+                                limit=None,  # No limit - get all data
+                                use_parallel=True
+                            )
+                            st.session_state.complete_csv_data = convert_to_csv(complete_recs)
+                            st.success(f"✅ Complete dataset ready: {len(complete_recs):,} recommendations")
+                    
+                    # Show download button only after complete data is generated
+                    if 'complete_csv_data' in st.session_state:
+                        st.download_button(
+                            "📥 Download Complete CSV",
+                            st.session_state.complete_csv_data,
+                            f"recommendations_complete_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            "text/csv",
+                            key="rec_csv_complete",
+                            use_container_width=True
+                        )
+                else:
+                    # Cache CSV generation for smaller datasets
+                    if 'csv_data' not in st.session_state or gen_clicked:
+                        st.session_state.csv_data = convert_to_csv(final_recs)
+                    
+                    st.download_button(
+                        "📥 Download CSV",
+                        st.session_state.csv_data,
+                        f"recommendations_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        "text/csv",
+                        key="rec_csv",
+                        use_container_width=True
+                    )
             with col2:
                 if len(final_recs) > 1000000:
                     st.warning(f"⚠️ {len(final_recs):,} rows (Excel limited to ~1M)")
@@ -2702,7 +4302,7 @@ def main():
                 "Groups": group,
                 "Sub Group": subgroup,
                 "Product": product,
-                "Shop": shop,
+                "Shop": shop,               
                 "Threshold": threshold,
                 "GRN Logic": use_grn_logic,
                 "Sales Period": f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
