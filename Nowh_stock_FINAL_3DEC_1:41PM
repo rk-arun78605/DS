@@ -738,7 +738,8 @@ def format_recommendations(df: pd.DataFrame, skip_capping: bool = False) -> pd.D
             np.ceil((df['dest_updated_stock'] / df['dest_sales']) * 30),
             999
         )
-        df['remark'] = 'DB-capped transfer'
+        if 'remark' not in df.columns:
+            df['remark'] = 'DB-capped transfer'
         
         # Format output
         result = df[[
