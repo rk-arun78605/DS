@@ -1364,6 +1364,36 @@ def generate_recommendations_optimized(group: str = 'All', subgroup: str = 'All'
         # Format output (just column names and display formatting)
         result = format_recommendations(df, skip_capping=True)
         
+        # Add expiry status column with smile emoji indicators
+        if 'Source Expiry Days' in result.columns:
+            def get_expiry_status(days):
+                if pd.isna(days):
+                    return ''
+                # Convert to numeric if string
+                try:
+                    days_num = float(days)
+                except (ValueError, TypeError):
+                    return ''
+                
+                # Skip invalid dates (1900, blank, 0)
+                if days_num == 0 or days_num > 100000 or days_num < -100000:
+                    return ''
+                
+                # Status based on expiry days with smile emojis
+                # Positive = expired (past date), 0 to -30 = expiring, < -30 = OK
+                if days_num > 0:
+                    return '☹️ EXPIRED'  # Sad smile - already expired
+                elif days_num >= -30 and days_num <= 0:
+                    return '😐 EXPIRING'  # Silent smile - expiring within 30 days
+                elif days_num < -30:
+                    return '😊 OK'  # Happy smile - more than 30 days until expiry
+                else:
+                    return ''
+            
+            result.insert(result.columns.get_loc('Source Expiry Days') + 1, 
+                          'Expiry Status', 
+                          result['Source Expiry Days'].apply(get_expiry_status))
+        
         total_time = time.time() - start_time
         logger.info(f"✅ Complete in {total_time:.2f}s | {len(result)} recommendations")
         return result
@@ -2027,46 +2057,40 @@ def convert_to_excel(slow_df, fast_df, final_df, filters_used):
         final_df_export = final_df.head(SAFE_LIMIT)
         final_df_export.to_excel(writer, index=False, sheet_name='Final_Recs')
         
-        # Apply conditional formatting to Source Expiry Date column in Final_Recs
-        if 'Source Expiry Date' in final_df.columns and 'Source Last GRN Date' in final_df.columns:
+        # Apply conditional formatting to Source Expiry Days column (☹️ EXPIRED red, 😐 EXPIRING yellow, 😊 OK green)
+        if 'Source Expiry Days' in final_df.columns:
             workbook = writer.book
             worksheet = writer.sheets['Final_Recs']
             
             # Define formats
-            red_format = workbook.add_format({'bg_color': '#ffcccc'})
-            yellow_format = workbook.add_format({'bg_color': '#ffffcc'})
+            red_format = workbook.add_format({'bg_color': '#FF0000', 'font_color': '#FFFFFF'})
+            yellow_format = workbook.add_format({'bg_color': '#FFFF00', 'font_color': '#000000'})
+            green_format = workbook.add_format({'bg_color': '#00FF00', 'font_color': '#000000'})
             
-            # Get column indices
-            expiry_col_idx = final_df.columns.get_loc('Source Expiry Date')
-            grn_col_idx = final_df.columns.get_loc('Source Last GRN Date')
-            expiry_days_col_idx = final_df.columns.get_loc('Source Expiry Days') if 'Source Expiry Days' in final_df.columns else None
+            # Get column index
+            expiry_days_col_idx = final_df.columns.get_loc('Source Expiry Days')
             
-            # Apply formatting row by row
-            for row_idx, row in enumerate(final_df_export.itertuples(), start=1):  # Start at 1 (after header)
-                expiry_date = getattr(row, final_df.columns[expiry_col_idx].replace(' ', '_'), None)
-                grn_date = getattr(row, final_df.columns[grn_col_idx].replace(' ', '_'), None)
-                expiry_days = getattr(row, final_df.columns[expiry_days_col_idx].replace(' ', '_'), None) if expiry_days_col_idx is not None else None
+            # Apply formatting row by row based on expiry days
+            for row_idx in range(len(final_df_export)):
+                days_value = final_df_export.iloc[row_idx]['Source Expiry Days']
                 
-                # Check if should skip coloring
-                skip_color = False
-                if pd.isna(expiry_date) or expiry_date == '' or expiry_date == 0:
-                    skip_color = True
-                elif str(expiry_date) in ['1900-00-00 00:00:00', '1900-01-01 00:00:00', '1900-01-01', '1900-01-01 00:00:00.000000']:
-                    skip_color = True
-                
-                if not skip_color and pd.notna(grn_date) and pd.notna(expiry_date):
+                if pd.notna(days_value):
                     try:
-                        expiry_dt = pd.to_datetime(expiry_date)
-                        grn_dt = pd.to_datetime(grn_date)
+                        days = float(days_value)
+                        # Skip invalid dates (0, blank, or extreme values like 1900)
+                        if days == 0 or abs(days) > 100000:
+                            continue
                         
-                        # Red if expiry < GRN date
-                        if expiry_dt < grn_dt:
-                            worksheet.write(row_idx, expiry_col_idx, expiry_date, red_format)
-                        # Yellow if expiry > GRN and within 30 days
-                        elif expiry_days is not None and pd.notna(expiry_days) and 0 < expiry_days <= 30:
-                            worksheet.write(row_idx, expiry_col_idx, expiry_date, yellow_format)
-                    except:
-                        pass
+                        # Apply color based on expiry days
+                        # Positive = expired (red), 0 to -30 = expiring (yellow), < -30 = OK (green)
+                        if days > 0:
+                            worksheet.write(row_idx + 1, expiry_days_col_idx, days, red_format)
+                        elif days >= -30 and days <= 0:
+                            worksheet.write(row_idx + 1, expiry_days_col_idx, days, yellow_format)
+                        elif days < -30:
+                            worksheet.write(row_idx + 1, expiry_days_col_idx, days, green_format)
+                    except (ValueError, TypeError):
+                        continue
 
         # Add filters and row count warnings
         meta_data = list(filters_used.items())
@@ -4003,7 +4027,7 @@ def main():
                     'Source Shop', 'Source Stock', 'Source Last 30d Sales', 
                     'Source Slow Moving', 'Source Fast Moving',
                     'Source Last GRN Date', 'Source Last WH GRN Date', 'Source GRN Age (days)',
-                    'Source Expiry Date', 'Source Expiry Days',
+                    'Source Expiry Date', 'Source Expiry Days', 'Expiry Status',
                     'Destination Shop', 'Destination Stock', 
                     'Destination Last 30d Sales',
                     'Destination Last WH GRN Date', 'WH GRN +30 Date', 'Destination Sales (WH GRN +30d)',
@@ -4047,10 +4071,14 @@ def main():
             start_idx = st.session_state.page_number * rows_per_page
             end_idx = min(start_idx + rows_per_page, total_rows)
             
-            # Add CSS to ensure scrollbars are visible
+            # Add CSS to hide outer scrollbars - only show dataframe scrollbars
             st.markdown("""
                 <style>
-                    /* Force scrollbars to be always visible */
+                    /* Hide outer container scrollbars */
+                    [data-testid="stVerticalBlock"] > div[style*="overflow"] {
+                        overflow: hidden !important;
+                    }
+                    /* Ensure dataframe has its own scrollbars */
                     div[data-testid="stDataFrame"] > div {
                         overflow: auto !important;
                     }
