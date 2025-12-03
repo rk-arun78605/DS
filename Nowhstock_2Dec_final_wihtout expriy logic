@@ -743,7 +743,8 @@ def format_recommendations(df: pd.DataFrame, skip_capping: bool = False) -> pd.D
         # Format output
         result = df[[
             'item_code', 'item_name', 'source_shop', 'source_stock', 'source_sales',
-            'source_last_grn', 'source_grn_age', 'source_wh_grn_date', 'dest_shop', 'dest_stock', 'dest_sales',
+            'source_last_grn', 'source_grn_age', 'source_wh_grn_date', 'source_expiry_date', 'source_expiry_days',
+            'dest_shop', 'dest_stock', 'dest_sales',
             'dest_wh_grn_date', 'dest_wh_grn_plus_30', 'dest_wh_grn_30d_sales',
             'dest_sales_used', 'dest_remaining_cap_before', 'recommended_qty', 'cumulative_qty',
             'dest_updated_stock', 'dest_final_stock_days', 'remark'
@@ -751,7 +752,8 @@ def format_recommendations(df: pd.DataFrame, skip_capping: bool = False) -> pd.D
         
         result.columns = [
             'ITEM_CODE', 'Item Name', 'Source Shop', 'Source Stock', 'Source Last 30d Sales',
-            'Source Last GRN Date', 'Source GRN Age (days)', 'Source Last WH GRN Date', 'Destination Shop',
+            'Source Last GRN Date', 'Source GRN Age (days)', 'Source Last WH GRN Date', 'Source Expiry Date', 'Source Expiry Days',
+            'Destination Shop',
             'Destination Stock', 'Destination Last 30d Sales',
             'Destination Last WH GRN Date', 'WH GRN +30 Date', 'Destination Sales (WH GRN +30d)',
             'Destination Sales Used (Cap)', 'Destination Remaining Cap Before Allocation', 'Recommended_Qty', 'Cumulative Allocated',
@@ -1323,6 +1325,8 @@ def generate_recommendations_optimized(group: str = 'All', subgroup: str = 'All'
             source_last_grn,
             source_grn_age,
             source_wh_grn_date,
+            source_expiry_date,
+            source_expiry_days,
             dest_shop,
             dest_stock,
             dest_sales,
@@ -1997,6 +2001,67 @@ def convert_to_csv(df: pd.DataFrame) -> bytes:
     """Convert DataFrame to CSV"""
     return df.to_csv(index=False).encode('utf-8')
 
+def convert_recommendations_to_xlsx(df: pd.DataFrame) -> bytes:
+    """Convert recommendations DataFrame to XLSX with conditional formatting for Source Expiry Date"""
+    output = io.BytesIO()
+    
+    # Clean timezone info
+    df_export = df.copy()
+    for col in df_export.select_dtypes(include=['datetimetz']).columns:
+        df_export[col] = df_export[col].dt.tz_localize(None)
+    for col in df_export.select_dtypes(include=['object']).columns:
+        if len(df_export[col].dropna()) > 0:
+            first_val = df_export[col].dropna().iloc[0]
+            if isinstance(first_val, pd.Timestamp) and hasattr(first_val, 'tz') and first_val.tz is not None:
+                df_export[col] = pd.to_datetime(df_export[col]).dt.tz_localize(None)
+    
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df_export.to_excel(writer, index=False, sheet_name='Recommendations')
+        
+        # Apply conditional formatting if Source Expiry Date column exists
+        if 'Source Expiry Date' in df_export.columns and 'Source Last GRN Date' in df_export.columns:
+            workbook = writer.book
+            worksheet = writer.sheets['Recommendations']
+            
+            # Define formats
+            red_format = workbook.add_format({'bg_color': '#ffcccc'})
+            yellow_format = workbook.add_format({'bg_color': '#ffffcc'})
+            date_format = workbook.add_format({'num_format': 'yyyy-mm-dd'})
+            
+            # Get column indices
+            expiry_col_idx = df_export.columns.get_loc('Source Expiry Date')
+            grn_col_idx = df_export.columns.get_loc('Source Last GRN Date')
+            expiry_days_col_idx = df_export.columns.get_loc('Source Expiry Days') if 'Source Expiry Days' in df_export.columns else None
+            
+            # Apply formatting row by row
+            for row_idx in range(len(df_export)):
+                excel_row = row_idx + 1  # Excel rows start at 1, +1 for header
+                expiry_date = df_export.iloc[row_idx]['Source Expiry Date']
+                expiry_days = df_export.iloc[row_idx]['Source Expiry Days'] if expiry_days_col_idx is not None else None
+                
+                # Check if should skip coloring
+                skip_color = False
+                if pd.isna(expiry_date) or expiry_date == '' or expiry_date == 0:
+                    skip_color = True
+                elif str(expiry_date) in ['1900-00-00 00:00:00', '1900-01-01 00:00:00', '1900-01-01', '1900-01-01 00:00:00.000000']:
+                    skip_color = True
+                
+                if not skip_color and pd.notna(expiry_days):
+                    try:
+                        days = float(expiry_days)
+                        
+                        # Red if negative (expired)
+                        if days < 0:
+                            worksheet.write(excel_row, expiry_col_idx, expiry_date, red_format)
+                        # Yellow if within 30 days (0-30)
+                        elif 0 <= days <= 30:
+                            worksheet.write(excel_row, expiry_col_idx, expiry_date, yellow_format)
+                    except:
+                        pass
+    
+    output.seek(0)
+    return output.getvalue()
+
 def convert_to_excel(slow_df, fast_df, final_df, filters_used):
     """Export the data to Excel with timezone-safe datetimes."""
     output = io.BytesIO()
@@ -2017,7 +2082,48 @@ def convert_to_excel(slow_df, fast_df, final_df, filters_used):
         SAFE_LIMIT = 1048000
         slow_df.head(SAFE_LIMIT).to_excel(writer, index=False, sheet_name='Slow_Moving_Shops')
         fast_df.head(SAFE_LIMIT).to_excel(writer, index=False, sheet_name='Fast_Moving_Shops')
-        final_df.head(SAFE_LIMIT).to_excel(writer, index=False, sheet_name='Final_Recs')
+        
+        # Write Final_Recs sheet
+        final_df_export = final_df.head(SAFE_LIMIT)
+        final_df_export.to_excel(writer, index=False, sheet_name='Final_Recs')
+        
+        # Apply conditional formatting to Source Expiry Date column in Final_Recs
+        if 'Source Expiry Date' in final_df.columns and 'Source Expiry Days' in final_df.columns:
+            workbook = writer.book
+            worksheet = writer.sheets['Final_Recs']
+            
+            # Define formats
+            red_format = workbook.add_format({'bg_color': '#ffcccc'})
+            yellow_format = workbook.add_format({'bg_color': '#ffffcc'})
+            
+            # Get column indices
+            expiry_col_idx = final_df.columns.get_loc('Source Expiry Date')
+            expiry_days_col_idx = final_df.columns.get_loc('Source Expiry Days')
+            
+            # Apply formatting row by row
+            for row_idx, row in enumerate(final_df_export.itertuples(), start=1):  # Start at 1 (after header)
+                expiry_date = getattr(row, final_df.columns[expiry_col_idx].replace(' ', '_'), None)
+                expiry_days = getattr(row, final_df.columns[expiry_days_col_idx].replace(' ', '_'), None)
+                
+                # Check if should skip coloring
+                skip_color = False
+                if pd.isna(expiry_date) or expiry_date == '' or expiry_date == 0:
+                    skip_color = True
+                elif str(expiry_date) in ['1900-00-00 00:00:00', '1900-01-01 00:00:00', '1900-01-01', '1900-01-01 00:00:00.000000']:
+                    skip_color = True
+                
+                if not skip_color and pd.notna(expiry_days):
+                    try:
+                        days = float(expiry_days)
+                        
+                        # Red if negative (expired)
+                        if days < 0:
+                            worksheet.write(row_idx, expiry_col_idx, expiry_date, red_format)
+                        # Yellow if within 30 days (0-30)
+                        elif 0 <= days <= 30:
+                            worksheet.write(row_idx, expiry_col_idx, expiry_date, yellow_format)
+                    except:
+                        pass
 
         # Add filters and row count warnings
         meta_data = list(filters_used.items())
@@ -3954,6 +4060,7 @@ def main():
                     'Source Shop', 'Source Stock', 'Source Last 30d Sales', 
                     'Source Slow Moving', 'Source Fast Moving',
                     'Source Last GRN Date', 'Source Last WH GRN Date', 'Source GRN Age (days)',
+                    'Source Expiry Date', 'Source Expiry Days',
                     'Destination Shop', 'Destination Stock', 
                     'Destination Last 30d Sales',
                     'Destination Last WH GRN Date', 'WH GRN +30 Date', 'Destination Sales (WH GRN +30d)',
@@ -4026,15 +4133,57 @@ def main():
                 </style>
             """, unsafe_allow_html=True)
             
+            # Prepare dataframe slice for display with expiry status indicator
+            display_df = final_recs.iloc[start_idx:end_idx].copy()
+            
+            # Add visual expiry status indicator column if Source Expiry Date exists
+            if 'Source Expiry Date' in display_df.columns and 'Source Last GRN Date' in display_df.columns:
+                def get_expiry_status(row):
+                    expiry_date = row.get('Source Expiry Date')
+                    expiry_days = row.get('Source Expiry Days')
+                    
+                    # Check if should skip (null, blank, or default dates)
+                    if pd.isna(expiry_date) or expiry_date == '' or expiry_date == 0:
+                        return ''
+                    if str(expiry_date) in ['1900-00-00 00:00:00', '1900-01-01 00:00:00', '1900-01-01', '1900-01-01 00:00:00.000000']:
+                        return ''
+                    
+                    # Check expiry_days for status
+                    if pd.notna(expiry_days):
+                        try:
+                            days = float(expiry_days)
+                            
+                            # Red if negative (already expired)
+                            if days < 0:
+                                return '🔴 EXPIRED'
+                            # Yellow if within 30 days
+                            elif 0 <= days <= 30:
+                                return '🟡 EXPIRING'
+                            # Green if beyond 30 days
+                            else:
+                                return '🟢 OK'
+                        except:
+                            return ''
+                    return ''
+                
+                # Add status column after Source Expiry Days
+                display_df.insert(
+                    display_df.columns.get_loc('Source Expiry Days') + 1 if 'Source Expiry Days' in display_df.columns else len(display_df.columns),
+                    'Expiry Status',
+                    display_df.apply(get_expiry_status, axis=1)
+                )
+            
             # Display dataframe with compact widths for better scrolling
             col_config = {}
-            for col in final_recs.columns:
+            for col in display_df.columns:
                 if col == 'ITEM_CODE':
                     col_config[col] = st.column_config.TextColumn(col, width=70)
                 elif col in ['Source Shop', 'Destination Shop']:
                     col_config[col] = st.column_config.TextColumn(col, width=85)
                 elif col == 'Sales_Status':
                     col_config[col] = st.column_config.TextColumn(col, width=75)
+                elif col == 'Expiry Status':
+                    col_config[col] = st.column_config.TextColumn(col, width=100)
                 elif col == 'Item Name':
                     col_config[col] = st.column_config.TextColumn(col, width=250)
                 elif col == 'Remark':
@@ -4047,6 +4196,8 @@ def main():
                     col_config[col] = st.column_config.NumberColumn(col, width=100)
                 elif 'Sales' in col or 'Age' in col or 'Days' in col:
                     col_config[col] = st.column_config.NumberColumn(col, width=110)
+                elif 'Expiry Date' in col:
+                    col_config[col] = st.column_config.DatetimeColumn(col, width=120, format="YYYY-MM-DD")
                 elif 'Date' in col:
                     col_config[col] = st.column_config.Column(col, width=110)
                 else:
@@ -4054,7 +4205,7 @@ def main():
             
             # Display with proper scrolling - use container width to avoid double scrollbars
             st.dataframe(
-                final_recs.iloc[start_idx:end_idx], 
+                display_df, 
                 height=600,
                 hide_index=True,
                 column_config=col_config,
@@ -4169,18 +4320,33 @@ def main():
                             use_container_width=True
                         )
                 else:
-                    # Cache CSV generation for smaller datasets
-                    if 'csv_data' not in st.session_state or gen_clicked:
-                        st.session_state.csv_data = convert_to_csv(final_recs)
-                    
-                    st.download_button(
-                        "📥 Download CSV",
-                        st.session_state.csv_data,
-                        f"recommendations_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                        "text/csv",
-                        key="rec_csv",
-                        use_container_width=True
-                    )
+                    # For small datasets (<50k rows), offer XLSX with formatting
+                    if len(final_recs) < 50000:
+                        # Cache XLSX generation for smaller datasets
+                        if 'xlsx_data' not in st.session_state or gen_clicked:
+                            st.session_state.xlsx_data = convert_recommendations_to_xlsx(final_recs)
+                        
+                        st.download_button(
+                            "📥 Download XLSX (with colors)",
+                            st.session_state.xlsx_data,
+                            f"recommendations_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key="rec_xlsx",
+                            use_container_width=True
+                        )
+                    else:
+                        # Cache CSV generation for larger datasets
+                        if 'csv_data' not in st.session_state or gen_clicked:
+                            st.session_state.csv_data = convert_to_csv(final_recs)
+                        
+                        st.download_button(
+                            "📥 Download CSV",
+                            st.session_state.csv_data,
+                            f"recommendations_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            "text/csv",
+                            key="rec_csv",
+                            use_container_width=True
+                        )
             with col2:
                 if len(final_recs) > 1000000:
                     st.warning(f"⚠️ {len(final_recs):,} rows (Excel limited to ~1M)")
