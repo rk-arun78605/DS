@@ -4071,22 +4071,27 @@ def main():
             start_idx = st.session_state.page_number * rows_per_page
             end_idx = min(start_idx + rows_per_page, total_rows)
             
-            # Add CSS to hide outer scrollbars - only show dataframe scrollbars
+            # Add CSS to completely hide outer scrollbars - only show dataframe scrollbars
             st.markdown("""
                 <style>
-                    /* Hide outer container scrollbars */
-                    [data-testid="stVerticalBlock"] > div[style*="overflow"] {
+                    /* Hide ALL outer container scrollbars at every level */
+                    section[data-testid="stAppViewContainer"],
+                    section[data-testid="stAppViewContainer"] > div,
+                    div[data-testid="stVerticalBlock"],
+                    div[data-testid="stVerticalBlock"] > div,
+                    div.main,
+                    div.block-container,
+                    div[data-testid="column"] {
                         overflow: hidden !important;
                     }
-                    /* Ensure dataframe has its own scrollbars */
+                    /* Only allow dataframe to scroll */
+                    div[data-testid="stDataFrame"] {
+                        overflow: auto !important;
+                    }
                     div[data-testid="stDataFrame"] > div {
                         overflow: auto !important;
                     }
-                    div[data-testid="stDataFrame"] > div > div {
-                        overflow-x: scroll !important;
-                        overflow-y: scroll !important;
-                    }
-                    /* Make scrollbars more visible */
+                    /* Make dataframe scrollbars visible */
                     div[data-testid="stDataFrame"]::-webkit-scrollbar {
                         width: 12px !important;
                         height: 12px !important;
