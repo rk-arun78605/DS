@@ -246,10 +246,11 @@ capped_recs AS (
         uncapped_qty,
         source_available,
         -- Window function: cumulative sum of uncapped_qty per item+destination
-        -- Ordered by priority rank (ASC), then GRN age (DESC - older first)
+        -- FEFO Ordering: priority rank (ASC), GRN age (DESC - older first), expiry days (DESC - expired/expiring first)
         SUM(uncapped_qty) OVER (
             PARTITION BY item_code, dest_shop 
-            ORDER BY priority_rank ASC, source_grn_age DESC, source_shop ASC
+            ORDER BY priority_rank ASC, source_grn_age DESC, 
+                     COALESCE(source_expiry_days, -999999) DESC, source_shop ASC
             ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
         ) AS cumulative_before_this_row,
         -- Capped qty: take what fits within remaining capacity
@@ -260,7 +261,8 @@ capped_recs AS (
                 dest_cap - COALESCE(
                     SUM(uncapped_qty) OVER (
                         PARTITION BY item_code, dest_shop 
-                        ORDER BY priority_rank ASC, source_grn_age DESC, source_shop ASC
+                        ORDER BY priority_rank ASC, source_grn_age DESC, 
+                                 COALESCE(source_expiry_days, -999999) DESC, source_shop ASC
                         ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
                     ),
                     0
@@ -276,15 +278,24 @@ source_allocation_check AS (
     SELECT 
         *,
         -- Calculate cumulative allocation from this source across ALL destinations
+        -- FEFO ordering applied (DESC for positive = expired first)
         SUM(recommended_qty) OVER (
             PARTITION BY item_code, source_shop
-            ORDER BY priority_rank ASC, source_grn_age DESC, dest_shop ASC
+            ORDER BY priority_rank ASC, source_grn_age DESC, 
+                     COALESCE(source_expiry_days, -999999) DESC, dest_shop ASC
         ) AS cumulative_source_allocated
     FROM capped_recs
 )
 
 -- Final output with all metrics
-SELECT 
+SELECT DISTINCT ON (
+    item_code, source_shop, dest_shop, source_stock, source_sales, 
+    source_last_grn, source_grn_age, source_wh_grn_date, 
+    source_expiry_date, source_expiry_days,
+    dest_stock, dest_sales, dest_last_grn, dest_grn_age, 
+    dest_wh_grn_date, dest_wh_grn_plus_30, dest_wh_grn_30d_sales,
+    dest_sales_used, priority_rank, recommended_qty
+)
     item_code,
     item_name,
     groups,
@@ -309,15 +320,19 @@ SELECT
     priority_rank,
     recommended_qty,
     -- Cumulative quantity allocated to this destination
+    -- FEFO ordering: priority, GRN age DESC, expiry days DESC (positive = expired first)
     SUM(recommended_qty) OVER (
         PARTITION BY item_code, dest_shop 
-        ORDER BY priority_rank ASC, source_grn_age DESC, source_shop ASC
+        ORDER BY priority_rank ASC, source_grn_age DESC, 
+                 COALESCE(source_expiry_days, -999999) DESC, source_shop ASC
     ) AS cumulative_qty,
     -- Remaining cap before this allocation
+    -- FEFO ordering applied (DESC for expired first)
     dest_cap - COALESCE(
         SUM(recommended_qty) OVER (
             PARTITION BY item_code, dest_shop 
-            ORDER BY priority_rank ASC, source_grn_age DESC, source_shop ASC
+            ORDER BY priority_rank ASC, source_grn_age DESC, 
+                     COALESCE(source_expiry_days, -999999) DESC, source_shop ASC
             ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
         ),
         0
@@ -344,10 +359,12 @@ FROM source_allocation_check
 WHERE cumulative_source_allocated <= source_available  -- RULE: Stop if source is exhausted
 -- Note: Include ALL rows (even recommended_qty = 0) to show complete picture
 ORDER BY 
-    source_grn_age DESC,  -- Oldest stock first
-    priority_rank ASC,     -- Higher priority first
-    dest_shop ASC,
-    item_code ASC;
+    item_code, source_shop, dest_shop, source_stock, source_sales, 
+    source_last_grn, source_grn_age, source_wh_grn_date, 
+    source_expiry_date, source_expiry_days,
+    dest_stock, dest_sales, dest_last_grn, dest_grn_age, 
+    dest_wh_grn_date, dest_wh_grn_plus_30, dest_wh_grn_30d_sales,
+    dest_sales_used, priority_rank, recommended_qty;
 
 -- Create indexes for fast filtering
 CREATE INDEX idx_mv_recs_complete_item ON mv_recommendations_complete(item_code);
