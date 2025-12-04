@@ -34,15 +34,20 @@ This repository contains scripts for inventory management and web scraping for r
 - Required Python packages: streamlit, pandas, psycopg2, beautifulsoup4
 
 ### Database Configuration
-Update database credentials in `nowhstock_final.py`:
+**IMPORTANT**: Update database credentials in `nowhstock_final.py` before deploying. For security, use environment variables instead of hard-coded passwords:
+
 ```python
+import os
+
 DB_CONFIG = {
-    'host': 'localhost',
-    'user': 'postgres',
-    'password': 'your_password',
-    'port': 3307
+    'host': os.getenv('DB_HOST', 'localhost'),
+    'user': os.getenv('DB_USER', 'postgres'),
+    'password': os.getenv('DB_PASSWORD'),  # Use environment variable
+    'port': int(os.getenv('DB_PORT', 3307))
 }
 ```
+
+The current code contains a placeholder password that should be changed before production use.
 
 ## Usage
 

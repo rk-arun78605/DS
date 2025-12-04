@@ -48,9 +48,15 @@ env/
 # Logs
 *.log
 
-# Environment variables
+# Environment variables and credentials
 .env
 .env.local
+.env.*
+credentials.json
+secrets.json
+config.ini
+*.pem
+*.key
 
 # Temporary files
 *.tmp
