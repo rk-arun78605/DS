@@ -1,0 +1,2272 @@
+import streamlit as st
+import pandas as pd
+import psycopg2
+from psycopg2.pool import SimpleConnectionPool
+from psycopg2.extras import RealDictCursor
+from contextlib import contextmanager
+import plotly.express as px
+import plotly.graph_objects as go
+from datetime import datetime, timedelta
+import numpy as np
+
+# ============================================================
+# PAGE CONFIGURATION
+# ============================================================
+st.set_page_config(
+    page_title="📦 Serial Number Supply Chain Funnel",
+    page_icon="📦",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
+# Custom CSS for beautiful UI
+st.markdown("""
+<style>
+    /* Main theme colors */
+    :root {
+        --primary-color: #1f77b4;
+        --success-color: #2ecc71;
+        --warning-color: #f39c12;
+        --danger-color: #e74c3c;
+    }
+    
+    /* Hide Streamlit branding */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    
+    /* Modern card styling */
+    .metric-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 20px;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        color: white;
+        text-align: center;
+        margin: 10px 0;
+    }
+    
+    .metric-card h2 {
+        font-size: 2.5rem;
+        font-weight: bold;
+        margin: 10px 0;
+    }
+    
+    .metric-card p {
+        font-size: 1rem;
+        opacity: 0.9;
+        margin: 0;
+    }
+    
+    /* Funnel stage cards */
+    .funnel-stage {
+        padding: 25px;
+        border-radius: 12px;
+        margin: 15px 0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        transition: transform 0.2s;
+    }
+    
+    .funnel-stage:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .stage-loaded {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+    
+    .stage-offloaded {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+    }
+    
+    .stage-sold {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        color: white;
+    }
+    
+    .stage-mismatch {
+        background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        color: white;
+    }
+    
+    /* Header styling */
+    .dashboard-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 30px;
+        border-radius: 15px;
+        color: white;
+        margin-bottom: 30px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .dashboard-header h1 {
+        margin: 0;
+        font-size: 2.5rem;
+        font-weight: bold;
+    }
+    
+    .dashboard-header p {
+        margin: 10px 0 0 0;
+        font-size: 1.1rem;
+        opacity: 0.9;
+    }
+    
+    /* Tabs styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 10px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        padding: 15px 30px;
+        border-radius: 10px 10px 0 0;
+        font-weight: 600;
+    }
+    
+    /* Date picker styling */
+    .date-container {
+        background: white;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ============================================================
+# DATABASE CONNECTION
+# ============================================================
+@st.cache_resource
+def get_connection_pool():
+    """Create PostgreSQL connection pool"""
+    return SimpleConnectionPool(
+        minconn=1,
+        maxconn=10,
+        host='localhost',
+        port=3307,
+        user='postgres',
+        password='hello',
+        dbname='WH'
+    )
+
+@contextmanager
+def get_db_connection():
+    """Context manager for database connections"""
+    pool = get_connection_pool()
+    conn = pool.getconn()
+    try:
+        yield conn
+    finally:
+        pool.putconn(conn)
+
+# ============================================================
+# DATA LOADING FUNCTIONS
+# ============================================================
+@st.cache_data(ttl=600)
+def load_funnel_data(start_date, end_date):
+    """Load funnel data with all stages"""
+    query = """
+    WITH base_data AS (
+        SELECT 
+            serial_no,
+            vc_shop_code AS dest_shop,
+            shop_sold,
+            vc_serail_no AS shop_serial_no,
+            dt_doc_date,
+            loaded_datetime,
+            dt_wod_date,
+            dt_invoice_date,
+            vc_item_code,
+            vc_item_desc,
+            vc_warehouse_desc,
+            vc_wh_code,
+            shop_name,
+            nu_selling_price,
+            CASE 
+                WHEN dt_invoice_date IS NOT NULL THEN 'Sold'
+                WHEN dt_wod_date IS NOT NULL THEN 'Offloaded'
+                WHEN loaded_datetime IS NOT NULL THEN 'Loaded'
+                ELSE 'Unknown'
+            END as status,
+            CASE 
+                WHEN shop_sold IS NOT NULL 
+                AND vc_shop_code IS NOT NULL 
+                AND shop_sold != vc_shop_code 
+                THEN 1 
+                ELSE 0 
+            END as is_mismatch
+        FROM serial_no_tracking
+        WHERE dt_doc_date BETWEEN %s AND %s
+    )
+    SELECT * FROM base_data
+    """
+    
+    with get_db_connection() as conn:
+        df = pd.read_sql_query(query, conn, params=(start_date, end_date))
+    
+    return df
+
+@st.cache_data(ttl=600)
+def load_shop_funnel_data(start_date, end_date):
+    """Load shop-wise funnel breakdown"""
+    query = """
+    SELECT 
+        vc_shop_code AS shop_code,
+        shop_name,
+        COUNT(DISTINCT serial_no) as total_loaded,
+        COUNT(DISTINCT CASE WHEN dt_wod_date IS NOT NULL THEN serial_no END) as total_offloaded,
+        COUNT(DISTINCT CASE WHEN dt_invoice_date IS NOT NULL THEN serial_no END) as total_sold,
+        COUNT(DISTINCT CASE 
+            WHEN shop_sold IS NOT NULL 
+            AND vc_shop_code IS NOT NULL 
+            AND shop_sold != vc_shop_code 
+            THEN serial_no 
+        END) as total_mismatch
+    FROM serial_no_tracking
+    WHERE dt_doc_date BETWEEN %s AND %s
+    GROUP BY vc_shop_code, shop_name
+    ORDER BY total_loaded DESC
+    """
+    
+    with get_db_connection() as conn:
+        df = pd.read_sql_query(query, conn, params=(start_date, end_date))
+    
+    return df
+
+@st.cache_data(ttl=600)
+def load_daily_trend(start_date, end_date):
+    """Load daily trend for 7-day dropoff analysis"""
+    query = """
+    SELECT 
+        DATE(dt_doc_date) as date,
+        COUNT(DISTINCT serial_no) as loaded,
+        COUNT(DISTINCT CASE WHEN dt_wod_date IS NOT NULL THEN serial_no END) as offloaded,
+        COUNT(DISTINCT CASE WHEN dt_invoice_date IS NOT NULL THEN serial_no END) as sold,
+        COUNT(DISTINCT CASE 
+            WHEN shop_sold IS NOT NULL 
+            AND vc_shop_code IS NOT NULL 
+            AND shop_sold != vc_shop_code 
+            THEN serial_no 
+        END) as mismatch
+    FROM serial_no_tracking
+    WHERE dt_doc_date BETWEEN %s AND %s
+    GROUP BY DATE(dt_doc_date)
+    ORDER BY date
+    """
+    
+    with get_db_connection() as conn:
+        df = pd.read_sql_query(query, conn, params=(start_date, end_date))
+    
+    return df
+
+@st.cache_data(ttl=600)
+def load_mismatch_details(start_date, end_date):
+    """Load detailed mismatch records with scenario classification"""
+    query = """
+    SELECT 
+        serial_no,
+        vc_serail_no,
+        shop_serail_no,
+        vc_shop_code AS dest_shop,
+        shop_sold,
+        shop_name AS dest_shop_name,
+        vc_item_desc,
+        dt_doc_date,
+        dt_invoice_date,
+        dt_wod_date,
+        nu_selling_price,
+        vc_warehouse_desc,
+        vc_vehicle_no,
+        CASE 
+            -- Scenario 1: Perfect Match (shop codes match AND all serials match)
+            WHEN vc_shop_code = shop_sold 
+                 AND serial_no = vc_serail_no 
+                 AND serial_no = shop_serail_no 
+                 THEN '✅ No Issue'
+            
+            -- Scenario 2: Sold at Different Shop (sold but wrong shop)
+            WHEN shop_sold IS NOT NULL 
+                 AND vc_shop_code != shop_sold 
+                 THEN '🔄 Sold at Different Shop'
+            
+            -- Scenario 3: Shop Didnt Offload (no offload or sale record)
+            WHEN shop_sold IS NULL 
+                 OR vc_serail_no IS NULL 
+                 OR shop_serail_no IS NULL 
+                 THEN '⚠️ Shop Didnt Offload'
+            
+            -- Scenario 4: Serial Mismatch (right shop but wrong serials)
+            WHEN vc_shop_code = shop_sold 
+                 AND (serial_no != vc_serail_no OR serial_no != shop_serail_no)
+                 THEN '🔢 Serial Number Mismatch'
+            
+            ELSE '❓ Unknown'
+        END as mismatch_scenario
+    FROM serial_no_tracking
+    WHERE dt_doc_date BETWEEN %s AND %s
+        AND (
+            -- Include all scenarios
+            (vc_shop_code != shop_sold) OR
+            (shop_sold IS NULL OR vc_serail_no IS NULL OR shop_serail_no IS NULL) OR
+            (serial_no != vc_serail_no OR serial_no != shop_serail_no)
+        )
+    ORDER BY dt_invoice_date DESC NULLS LAST
+    """
+    
+    with get_db_connection() as conn:
+        df = pd.read_sql_query(query, conn, params=(start_date, end_date))
+    
+    return df
+
+@st.cache_data(ttl=3600)
+def load_all_serials_for_ai(start_date, end_date, sample_size=5000):
+    """Load serial numbers with brand/group/subgroup for AI validation"""
+    query = """
+    SELECT 
+        serial_no,
+        vc_serail_no,
+        shop_serail_no,
+        vc_item_code,
+        vc_item_desc,
+        vc_shop_code,
+        shop_name,
+        shop_sold,
+        dt_doc_date,
+        dt_invoice_date,
+        vc_vehicle_no
+    FROM serial_no_tracking
+    WHERE dt_doc_date BETWEEN %s AND %s
+        AND serial_no IS NOT NULL
+    ORDER BY dt_doc_date DESC
+    LIMIT %s
+    """
+    
+    with get_db_connection() as conn:
+        df = pd.read_sql_query(query, conn, params=(start_date, end_date, sample_size))
+    
+    return df
+
+@st.cache_data(ttl=600)
+def load_mismatch_drill_down(start_date, end_date, dest_shop, shop_sold):
+    """Load detailed records for specific mismatch pattern with scenarios"""
+    query = """
+    SELECT 
+        serial_no,
+        vc_serail_no,
+        shop_serail_no,
+        vc_item_code,
+        vc_item_desc,
+        vc_shop_code AS dest_shop,
+        shop_sold,
+        shop_name AS dest_shop_name,
+        dt_doc_date,
+        dt_invoice_date,
+        dt_wod_date,
+        nu_selling_price,
+        vc_warehouse_desc,
+        vc_wh_code,
+        vc_vehicle_no,
+        loaded_datetime,
+        CASE 
+            WHEN vc_shop_code = shop_sold 
+                 AND serial_no = vc_serail_no 
+                 AND serial_no = shop_serail_no 
+                 THEN '✅ No Issue'
+            WHEN shop_sold IS NOT NULL 
+                 AND vc_shop_code != shop_sold 
+                 THEN '🔄 Sold at Different Shop'
+            WHEN shop_sold IS NULL 
+                 OR vc_serail_no IS NULL 
+                 OR shop_serail_no IS NULL 
+                 THEN '⚠️ Shop Didnt Offload'
+            WHEN vc_shop_code = shop_sold 
+                 AND (serial_no != vc_serail_no OR serial_no != shop_serail_no)
+                 THEN '🔢 Serial Number Mismatch'
+            ELSE '❓ Unknown'
+        END as mismatch_scenario
+    FROM serial_no_tracking
+    WHERE dt_doc_date BETWEEN %s AND %s
+        AND vc_shop_code = %s
+        AND (shop_sold = %s OR (shop_sold IS NULL AND %s = 'NOT_SOLD'))
+    ORDER BY dt_invoice_date DESC NULLS LAST
+    """
+    
+    with get_db_connection() as conn:
+        df = pd.read_sql_query(query, conn, params=(start_date, end_date, dest_shop, shop_sold, shop_sold))
+    
+    return df
+
+# ============================================================
+# VISUALIZATION FUNCTIONS
+# ============================================================
+def create_funnel_chart(loaded, offloaded, sold, mismatch):
+    """Create beautiful funnel visualization"""
+    
+    # Calculate percentages
+    offload_rate = (offloaded / loaded * 100) if loaded > 0 else 0
+    sold_rate = (sold / loaded * 100) if loaded > 0 else 0
+    mismatch_rate = (mismatch / sold * 100) if sold > 0 else 0
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Funnel(
+        name='Supply Chain Flow',
+        y=['📦 Loaded from WH', '🏪 Offloaded at Shop', '💰 Sold by Shop', '⚠️ Shop Mismatch'],
+        x=[loaded, offloaded, sold, mismatch],
+        textposition="inside",
+        textinfo="value+percent initial",
+        opacity=0.85,
+        marker={
+            "color": ['#667eea', '#f093fb', '#4facfe', '#fa709a'],
+            "line": {"width": 2, "color": "white"}
+        },
+        connector={"line": {"color": "#e0e0e0", "dash": "solid", "width": 3}}
+    ))
+    
+    fig.update_layout(
+        title={
+            'text': '📊 Serial Number Flow - Supply Chain Funnel',
+            'font': {'size': 24, 'color': '#2c3e50', 'family': 'Arial Black'}
+        },
+        height=500,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font={'size': 14, 'color': '#2c3e50'},
+        margin=dict(l=20, r=20, t=80, b=20)
+    )
+    
+    return fig
+
+def create_shop_funnel_chart(shop_data, top_n=10):
+    """Create shop-wise comparison funnel"""
+    
+    # Get top N shops by loaded count
+    top_shops = shop_data.nlargest(top_n, 'total_loaded')
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        name='Loaded',
+        y=top_shops['shop_name'],
+        x=top_shops['total_loaded'],
+        orientation='h',
+        marker=dict(color='#667eea'),
+        text=top_shops['total_loaded'],
+        textposition='outside'
+    ))
+    
+    fig.add_trace(go.Bar(
+        name='Offloaded',
+        y=top_shops['shop_name'],
+        x=top_shops['total_offloaded'],
+        orientation='h',
+        marker=dict(color='#f093fb'),
+        text=top_shops['total_offloaded'],
+        textposition='outside'
+    ))
+    
+    fig.add_trace(go.Bar(
+        name='Sold',
+        y=top_shops['shop_name'],
+        x=top_shops['total_sold'],
+        orientation='h',
+        marker=dict(color='#4facfe'),
+        text=top_shops['total_sold'],
+        textposition='outside'
+    ))
+    
+    fig.add_trace(go.Bar(
+        name='Mismatch',
+        y=top_shops['shop_name'],
+        x=top_shops['total_mismatch'],
+        orientation='h',
+        marker=dict(color='#fa709a'),
+        text=top_shops['total_mismatch'],
+        textposition='outside'
+    ))
+    
+    fig.update_layout(
+        title={
+            'text': f'🏪 Top {top_n} Shops - Funnel Breakdown',
+            'font': {'size': 20, 'color': '#2c3e50', 'family': 'Arial Black'}
+        },
+        barmode='group',
+        height=500,
+        xaxis_title='Count',
+        yaxis_title='Shop',
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font={'size': 12, 'color': '#2c3e50'},
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        margin=dict(l=20, r=20, t=80, b=20)
+    )
+    
+    return fig
+
+def create_trend_chart(trend_data):
+    """Create 7-day dropoff trend chart"""
+    
+    fig = go.Figure()
+    
+    # Calculate dropoff rates
+    trend_data['offload_dropoff'] = trend_data['loaded'] - trend_data['offloaded']
+    trend_data['sold_dropoff'] = trend_data['offloaded'] - trend_data['sold']
+    
+    fig.add_trace(go.Scatter(
+        x=trend_data['date'],
+        y=trend_data['loaded'],
+        name='Loaded',
+        mode='lines+markers',
+        line=dict(color='#667eea', width=3),
+        marker=dict(size=10),
+        fill='tonexty',
+        fillcolor='rgba(102, 126, 234, 0.1)'
+    ))
+    
+    fig.add_trace(go.Scatter(
+        x=trend_data['date'],
+        y=trend_data['offloaded'],
+        name='Offloaded',
+        mode='lines+markers',
+        line=dict(color='#f093fb', width=3),
+        marker=dict(size=10),
+        fill='tonexty',
+        fillcolor='rgba(240, 147, 251, 0.1)'
+    ))
+    
+    fig.add_trace(go.Scatter(
+        x=trend_data['date'],
+        y=trend_data['sold'],
+        name='Sold',
+        mode='lines+markers',
+        line=dict(color='#4facfe', width=3),
+        marker=dict(size=10),
+        fill='tonexty',
+        fillcolor='rgba(79, 172, 254, 0.1)'
+    ))
+    
+    fig.add_trace(go.Scatter(
+        x=trend_data['date'],
+        y=trend_data['mismatch'],
+        name='Mismatch',
+        mode='lines+markers',
+        line=dict(color='#fa709a', width=3, dash='dash'),
+        marker=dict(size=10)
+    ))
+    
+    fig.update_layout(
+        title={
+            'text': '📈 Last 7 Days Trend - Serial Number Flow',
+            'font': {'size': 20, 'color': '#2c3e50', 'family': 'Arial Black'}
+        },
+        height=400,
+        xaxis_title='Date',
+        yaxis_title='Count',
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font={'size': 12, 'color': '#2c3e50'},
+        hovermode='x unified',
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        margin=dict(l=20, r=20, t=80, b=20)
+    )
+    
+    return fig
+
+def create_mismatch_heatmap(mismatch_data):
+    """Create heatmap showing destination shop vs actual sold shop"""
+    
+    # Create crosstab
+    heatmap_data = pd.crosstab(
+        mismatch_data['dest_shop'], 
+        mismatch_data['shop_sold'],
+        values=mismatch_data['serial_no'],
+        aggfunc='count',
+        dropna=False
+    ).fillna(0)
+    
+    fig = go.Figure(data=go.Heatmap(
+        z=heatmap_data.values,
+        x=heatmap_data.columns,
+        y=heatmap_data.index,
+        colorscale='Reds',
+        text=heatmap_data.values,
+        texttemplate='%{text}',
+        textfont={"size": 12},
+        colorbar=dict(title="Count")
+    ))
+    
+    fig.update_layout(
+        title={
+            'text': '🔥 Mismatch Heatmap: Destination Shop vs Actual Sold Shop',
+            'font': {'size': 18, 'color': '#2c3e50', 'family': 'Arial Black'}
+        },
+        xaxis_title='Actual Sold Shop',
+        yaxis_title='Destination Shop',
+        height=500,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font={'size': 11, 'color': '#2c3e50'}
+    )
+    
+    return fig
+
+def create_mismatch_sunburst(mismatch_data):
+    """Create interactive sunburst chart for hierarchical mismatch analysis"""
+    
+    # Prepare hierarchical data: Destination Shop -> Shop Sold -> Group -> Serial Numbers
+    sunburst_prep = mismatch_data.copy()
+    
+    # Extract group from description (first word/brand)
+    sunburst_prep['group'] = sunburst_prep['vc_item_desc'].str.split(' |-|_').str[0].str.upper()
+    
+    # Create hierarchy dataframe
+    hierarchy_data = []
+    
+    # Level 1: Destination Shop (where it should have gone)
+    dest_agg = sunburst_prep.groupby('dest_shop').agg({
+        'serial_no': 'count',
+        'nu_selling_price': 'sum'
+    }).reset_index()
+    
+    for _, row in dest_agg.iterrows():
+        hierarchy_data.append({
+            'labels': f"📍 {row['dest_shop']}",
+            'parents': 'Mismatch Root',
+            'values': row['serial_no'],
+            'text': f"Dest Shop: {row['dest_shop']}<br>Count: {row['serial_no']}<br>Value: ₵{row['nu_selling_price']:,.2f}"
+        })
+    
+    # Level 2: Shop Sold (where it actually went) under destination
+    sold_agg = sunburst_prep.groupby(['dest_shop', 'shop_sold']).agg({
+        'serial_no': 'count',
+        'nu_selling_price': 'sum'
+    }).reset_index()
+    
+    for _, row in sold_agg.iterrows():
+        hierarchy_data.append({
+            'labels': f"🏪 {row['shop_sold']}",
+            'parents': f"📍 {row['dest_shop']}",
+            'values': row['serial_no'],
+            'text': f"Actually Sold at: {row['shop_sold']}<br>Count: {row['serial_no']}<br>Value: ₵{row['nu_selling_price']:,.2f}"
+        })
+    
+    # Level 3: Group under sold shop
+    group_agg = sunburst_prep.groupby(['dest_shop', 'shop_sold', 'group']).agg({
+        'serial_no': 'count',
+        'nu_selling_price': 'sum'
+    }).reset_index()
+    
+    for _, row in group_agg.iterrows():
+        hierarchy_data.append({
+            'labels': f"📦 {row['group']}",
+            'parents': f"🏪 {row['shop_sold']}",
+            'values': row['serial_no'],
+            'text': f"Group: {row['group']}<br>Count: {row['serial_no']}<br>Value: ₵{row['nu_selling_price']:,.2f}"
+        })
+    
+    # Level 4: Individual serial numbers under group (limit to top 100 per group for performance)
+    for _, row in sunburst_prep.iterrows():
+        # Only add if less than 100 serials per group to avoid overcrowding
+        group_count = sunburst_prep[
+            (sunburst_prep['dest_shop'] == row['dest_shop']) & 
+            (sunburst_prep['shop_sold'] == row['shop_sold']) & 
+            (sunburst_prep['group'] == row['group'])
+        ].shape[0]
+        
+        if group_count <= 50:  # Only show individual serials for smaller groups
+            hierarchy_data.append({
+                'labels': f"🔢 {str(row['serial_no'])[:15]}",
+                'parents': f"📦 {row['group']}",
+                'values': 1,
+                'text': f"Serial: {row['serial_no']}<br>Item: {row['vc_item_desc'][:30]}<br>Price: ₵{row['nu_selling_price']:,.2f}"
+            })
+    
+    # Add root
+    total_count = mismatch_data['serial_no'].count()
+    total_value = mismatch_data['nu_selling_price'].sum()
+    hierarchy_data.insert(0, {
+        'labels': 'Mismatch Root',
+        'parents': '',
+        'values': total_count,
+        'text': f"Total: {total_count}<br>Value: ₵{total_value:,.2f}"
+    })
+    
+    df_hierarchy = pd.DataFrame(hierarchy_data)
+    
+    # Create sunburst
+    fig = go.Figure(go.Sunburst(
+        labels=df_hierarchy['labels'],
+        parents=df_hierarchy['parents'],
+        values=df_hierarchy['values'],
+        text=df_hierarchy['text'],
+        hovertemplate='<b>%{label}</b><br>%{text}<extra></extra>',
+        marker=dict(
+            colorscale='RdYlBu_r',
+            cmid=df_hierarchy['values'].median() if len(df_hierarchy) > 0 else 1,
+            line=dict(color='white', width=2)
+        ),
+        branchvalues='total'
+    ))
+    
+    fig.update_layout(
+        title={
+            'text': '🌞 Mismatch Hierarchy - Dest Shop → Actual Shop → Group → Serials',
+            'font': {'size': 22, 'color': '#2c3e50', 'family': 'Arial Black'},
+            'x': 0.5,
+            'xanchor': 'center'
+        },
+        height=700,
+        paper_bgcolor='rgba(0,0,0,0)',
+        font={'size': 12, 'color': '#2c3e50'},
+        margin=dict(l=0, r=0, t=80, b=0)
+    )
+    
+    return fig
+
+def create_scenario_breakdown_chart(mismatch_data):
+    """Create breakdown chart by mismatch scenario"""
+    
+    # Count by scenario
+    scenario_counts = mismatch_data['mismatch_scenario'].value_counts().reset_index()
+    scenario_counts.columns = ['Scenario', 'Count']
+    
+    # Add value aggregation
+    scenario_values = mismatch_data.groupby('mismatch_scenario')['nu_selling_price'].sum().reset_index()
+    scenario_values.columns = ['Scenario', 'Total_Value']
+    
+    scenario_summary = scenario_counts.merge(scenario_values, on='Scenario')
+    
+    # Create color mapping
+    color_map = {
+        '✅ No Issue': '#2ecc71',
+        '🔄 Sold at Different Shop': '#e74c3c',
+        '⚠️ Shop Didnt Offload': '#f39c12',
+        '🔢 Serial Number Mismatch': '#9b59b6',
+        '❓ Unknown': '#95a5a6'
+    }
+    
+    scenario_summary['Color'] = scenario_summary['Scenario'].map(color_map)
+    
+    # Create dual axis chart
+    fig = go.Figure()
+    
+    # Add bar chart for count
+    fig.add_trace(go.Bar(
+        x=scenario_summary['Scenario'],
+        y=scenario_summary['Count'],
+        name='Count',
+        marker=dict(color=scenario_summary['Color']),
+        text=scenario_summary['Count'],
+        textposition='outside',
+        yaxis='y'
+    ))
+    
+    # Add line chart for value
+    fig.add_trace(go.Scatter(
+        x=scenario_summary['Scenario'],
+        y=scenario_summary['Total_Value'],
+        name='Total Value (₵)',
+        mode='lines+markers',
+        marker=dict(size=12, color='#3498db'),
+        line=dict(width=3),
+        yaxis='y2'
+    ))
+    
+    fig.update_layout(
+        title={
+            'text': '📊 Mismatch Scenario Breakdown - Count & Value',
+            'font': {'size': 20, 'color': '#2c3e50', 'family': 'Arial Black'},
+            'x': 0.5,
+            'xanchor': 'center'
+        },
+        xaxis=dict(title='Scenario'),
+        yaxis=dict(title='Count', side='left'),
+        yaxis2=dict(title='Total Value (₵)', side='right', overlaying='y'),
+        height=500,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font={'size': 12, 'color': '#2c3e50'},
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        margin=dict(l=20, r=20, t=80, b=20)
+    )
+    
+    return fig
+
+def create_mismatch_sankey(mismatch_data):
+    """Create Sankey diagram showing flow from destination to actual sold shop"""
+    
+    # Filter only 'Sold at Different Shop' scenario for Sankey
+    sankey_data = mismatch_data[mismatch_data['mismatch_scenario'] == '🔄 Sold at Different Shop'].copy()
+    
+    if len(sankey_data) == 0:
+        # Return empty figure with message
+        fig = go.Figure()
+        fig.add_annotation(
+            text="No 'Sold at Different Shop' scenarios found in selected date range",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color="#7f8c8d")
+        )
+        fig.update_layout(height=400)
+        return fig
+    
+    # Get top 15 mismatch patterns
+    flow_data = sankey_data.groupby(['dest_shop', 'shop_sold']).agg({
+        'serial_no': 'count',
+        'nu_selling_price': 'sum'
+    }).reset_index().nlargest(15, 'serial_no')
+    
+    # Create unique node list
+    dest_shops = flow_data['dest_shop'].unique().tolist()
+    sold_shops = flow_data['shop_sold'].unique().tolist()
+    all_nodes = list(set(dest_shops + sold_shops))
+    
+    # Create node indices
+    node_dict = {node: idx for idx, node in enumerate(all_nodes)}
+    
+    # Create source, target, value lists
+    sources = [node_dict[dest] for dest in flow_data['dest_shop']]
+    targets = [node_dict[sold] for sold in flow_data['shop_sold']]
+    values = flow_data['serial_no'].tolist()
+    
+    # Create labels with counts
+    node_labels = []
+    for node in all_nodes:
+        dest_count = flow_data[flow_data['dest_shop'] == node]['serial_no'].sum()
+        sold_count = flow_data[flow_data['shop_sold'] == node]['serial_no'].sum()
+        total = dest_count + sold_count
+        node_labels.append(f"{node}<br>({int(total)})")
+    
+    # Create colors
+    node_colors = ['rgba(255, 127, 14, 0.8)' if i < len(dest_shops) else 'rgba(44, 160, 44, 0.8)' 
+                   for i in range(len(all_nodes))]
+    
+    link_colors = ['rgba(255, 0, 0, 0.3)' for _ in range(len(sources))]
+    
+    fig = go.Figure(go.Sankey(
+        node=dict(
+            pad=15,
+            thickness=20,
+            line=dict(color='white', width=2),
+            label=node_labels,
+            color=node_colors,
+            hovertemplate='%{label}<br>Total Flow: %{value}<extra></extra>'
+        ),
+        link=dict(
+            source=sources,
+            target=targets,
+            value=values,
+            color=link_colors,
+            hovertemplate='%{source.label} → %{target.label}<br>Count: %{value}<extra></extra>'
+        )
+    ))
+    
+    fig.update_layout(
+        title={
+            'text': '🔄 Mismatch Flow - Destination → Actual Sold Shop',
+            'font': {'size': 20, 'color': '#2c3e50', 'family': 'Arial Black'},
+            'x': 0.5,
+            'xanchor': 'center'
+        },
+        height=600,
+        paper_bgcolor='rgba(0,0,0,0)',
+        font={'size': 12, 'color': '#2c3e50'},
+        margin=dict(l=20, r=20, t=80, b=20)
+    )
+    
+    return fig
+
+# ============================================================
+# MAIN DASHBOARD
+# ============================================================
+def main():
+    # Header with gradient
+    st.markdown("""
+        <div class="dashboard-header">
+            <h1>📦 Serial Number Tracking Dashboard</h1>
+            <p>Real-time Supply Chain Funnel Analysis | Warehouse → Shop → Sale</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Date selection in top right corner
+    col1, col2, col3 = st.columns([6, 2, 2])
+    
+    with col2:
+        start_date = st.date_input(
+            "📅 Start Date",
+            value=datetime.today() - timedelta(days=7),
+            max_value=datetime.today()
+        )
+    
+    with col3:
+        end_date = st.date_input(
+            "📅 End Date",
+            value=datetime.today(),
+            max_value=datetime.today()
+        )
+    
+    # Quick date filters
+    col1, col2, col3, col4, col5 = st.columns(5)
+    
+    with col1:
+        if st.button("📅 Today"):
+            start_date = datetime.today().date()
+            end_date = datetime.today().date()
+            st.rerun()
+    
+    with col2:
+        if st.button("📅 Last 7 Days"):
+            start_date = (datetime.today() - timedelta(days=7)).date()
+            end_date = datetime.today().date()
+            st.rerun()
+    
+    with col3:
+        if st.button("📅 Last 30 Days"):
+            start_date = (datetime.today() - timedelta(days=30)).date()
+            end_date = datetime.today().date()
+            st.rerun()
+    
+    with col4:
+        if st.button("📅 This Month"):
+            start_date = datetime.today().replace(day=1).date()
+            end_date = datetime.today().date()
+            st.rerun()
+    
+    with col5:
+        if st.button("📅 Last Month"):
+            last_month = datetime.today().replace(day=1) - timedelta(days=1)
+            start_date = last_month.replace(day=1).date()
+            end_date = last_month.date()
+            st.rerun()
+    
+    st.markdown("---")
+    
+    # Load data
+    with st.spinner("🔄 Loading data..."):
+        funnel_data = load_funnel_data(start_date, end_date)
+        shop_data = load_shop_funnel_data(start_date, end_date)
+        trend_data = load_daily_trend(start_date, end_date)
+        mismatch_data = load_mismatch_details(start_date, end_date)
+    
+    # Calculate metrics
+    total_loaded = funnel_data['serial_no'].nunique()
+    total_offloaded = funnel_data[funnel_data['status'].isin(['Offloaded', 'Sold'])]['serial_no'].nunique()
+    total_sold = funnel_data[funnel_data['status'] == 'Sold']['serial_no'].nunique()
+    total_mismatch = funnel_data[funnel_data['is_mismatch'] == 1]['serial_no'].nunique()
+    
+    # Top metrics cards
+    st.markdown("### 🎯 Key Performance Indicators")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        offload_rate = (total_offloaded / total_loaded * 100) if total_loaded > 0 else 0
+        st.markdown(f"""
+            <div class="funnel-stage stage-loaded">
+                <h2>{total_loaded:,}</h2>
+                <p>📦 Loaded from Warehouse</p>
+                <p style="font-size: 0.9rem; margin-top: 10px;">Base Volume</p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+            <div class="funnel-stage stage-offloaded">
+                <h2>{total_offloaded:,}</h2>
+                <p>🏪 Offloaded at Shop</p>
+                <p style="font-size: 0.9rem; margin-top: 10px;">↓ {offload_rate:.1f}% of loaded</p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        sold_rate = (total_sold / total_loaded * 100) if total_loaded > 0 else 0
+        st.markdown(f"""
+            <div class="funnel-stage stage-sold">
+                <h2>{total_sold:,}</h2>
+                <p>💰 Sold by Shop</p>
+                <p style="font-size: 0.9rem; margin-top: 10px;">↓ {sold_rate:.1f}% of loaded</p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        mismatch_rate = (total_mismatch / total_sold * 100) if total_sold > 0 else 0
+        st.markdown(f"""
+            <div class="funnel-stage stage-mismatch">
+                <h2>{total_mismatch:,}</h2>
+                <p>⚠️ Shop Mismatch</p>
+                <p style="font-size: 0.9rem; margin-top: 10px;">{mismatch_rate:.1f}% of sold</p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Tabs for different views
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "🎯 Overall Funnel", 
+        "🏪 Shop-wise Analysis", 
+        "📈 Trend Analysis", 
+        "⚠️ Mismatch Details",
+        "🤖 AI Pattern Validation"
+    ])
+    
+    with tab1:
+        st.markdown("### 📊 Overall Supply Chain Funnel")
+        
+        # Main funnel chart
+        funnel_fig = create_funnel_chart(total_loaded, total_offloaded, total_sold, total_mismatch)
+        st.plotly_chart(funnel_fig, use_container_width=True)
+        
+        # Conversion rates
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            offload_conversion = (total_offloaded / total_loaded * 100) if total_loaded > 0 else 0
+            st.metric(
+                "Offload Conversion Rate",
+                f"{offload_conversion:.1f}%",
+                delta=f"{total_loaded - total_offloaded:,} pending",
+                delta_color="inverse"
+            )
+        
+        with col2:
+            sell_conversion = (total_sold / total_offloaded * 100) if total_offloaded > 0 else 0
+            st.metric(
+                "Sell-through Rate",
+                f"{sell_conversion:.1f}%",
+                delta=f"{total_offloaded - total_sold:,} in stock",
+                delta_color="inverse"
+            )
+        
+        with col3:
+            accuracy_rate = ((total_sold - total_mismatch) / total_sold * 100) if total_sold > 0 else 0
+            st.metric(
+                "Destination Accuracy",
+                f"{accuracy_rate:.1f}%",
+                delta=f"{total_mismatch:,} mismatches",
+                delta_color="inverse"
+            )
+    
+    with tab2:
+        st.markdown("### 🏪 Shop-wise Funnel Breakdown")
+        
+        # Shop funnel chart
+        shop_fig = create_shop_funnel_chart(shop_data)
+        st.plotly_chart(shop_fig, use_container_width=True)
+        
+        # Shop-wise table
+        st.markdown("### 📋 Detailed Shop Performance")
+        
+        # Calculate rates
+        shop_data['offload_rate'] = (shop_data['total_offloaded'] / shop_data['total_loaded'] * 100).round(1)
+        shop_data['sold_rate'] = (shop_data['total_sold'] / shop_data['total_loaded'] * 100).round(1)
+        shop_data['mismatch_rate'] = (shop_data['total_mismatch'] / shop_data['total_sold'] * 100).fillna(0).round(1)
+        
+        # Display table
+        display_cols = [
+            'shop_code', 'shop_name', 'total_loaded', 'total_offloaded', 
+            'offload_rate', 'total_sold', 'sold_rate', 'total_mismatch', 'mismatch_rate'
+        ]
+        
+        # Style the dataframe with conditional formatting
+        def highlight_mismatch(row):
+            colors = []
+            for col in row.index:
+                if col == 'mismatch_rate':
+                    val = row[col]
+                    if val > 10:
+                        colors.append('background-color: #ffcccc')
+                    elif val > 5:
+                        colors.append('background-color: #ffe6e6')
+                    elif val > 0:
+                        colors.append('background-color: #fff2f2')
+                    else:
+                        colors.append('')
+                else:
+                    colors.append('')
+            return colors
+        
+        st.dataframe(
+            shop_data[display_cols].style.format({
+                'total_loaded': '{:,.0f}',
+                'total_offloaded': '{:,.0f}',
+                'total_sold': '{:,.0f}',
+                'total_mismatch': '{:,.0f}',
+                'offload_rate': '{:.1f}%',
+                'sold_rate': '{:.1f}%',
+                'mismatch_rate': '{:.1f}%'
+            }).apply(highlight_mismatch, axis=1),
+            use_container_width=True,
+            height=400
+        )
+    
+    with tab3:
+        st.markdown("### 📈 7-Day Trend Analysis")
+        
+        # Trend chart
+        trend_fig = create_trend_chart(trend_data)
+        st.plotly_chart(trend_fig, use_container_width=True)
+        
+        # Dropoff analysis
+        st.markdown("### 📉 Daily Dropoff Analysis")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Offload dropoff
+            trend_data['offload_dropoff'] = trend_data['loaded'] - trend_data['offloaded']
+            trend_data['offload_dropoff_pct'] = (trend_data['offload_dropoff'] / trend_data['loaded'] * 100).round(1)
+            
+            fig_dropoff1 = px.bar(
+                trend_data,
+                x='date',
+                y='offload_dropoff',
+                title='🔻 Daily Offload Dropoff',
+                labels={'offload_dropoff': 'Dropoff Count', 'date': 'Date'},
+                color='offload_dropoff_pct',
+                color_continuous_scale='Oranges',
+                text='offload_dropoff'
+            )
+            fig_dropoff1.update_traces(textposition='outside')
+            fig_dropoff1.update_layout(height=350)
+            st.plotly_chart(fig_dropoff1, use_container_width=True)
+        
+        with col2:
+            # Sold dropoff
+            trend_data['sold_dropoff'] = trend_data['offloaded'] - trend_data['sold']
+            trend_data['sold_dropoff_pct'] = (trend_data['sold_dropoff'] / trend_data['offloaded'] * 100).fillna(0).round(1)
+            
+            fig_dropoff2 = px.bar(
+                trend_data,
+                x='date',
+                y='sold_dropoff',
+                title='🔻 Daily Sold Dropoff',
+                labels={'sold_dropoff': 'Dropoff Count', 'date': 'Date'},
+                color='sold_dropoff_pct',
+                color_continuous_scale='Purples',
+                text='sold_dropoff'
+            )
+            fig_dropoff2.update_traces(textposition='outside')
+            fig_dropoff2.update_layout(height=350)
+            st.plotly_chart(fig_dropoff2, use_container_width=True)
+    
+    with tab4:
+        # Animated header with gradient
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); padding: 30px; border-radius: 15px; color: white; margin-bottom: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); animation: fadeInDown 0.8s ease-out;'>
+            <h1 style='margin: 0; font-size: 2.5rem; text-align: center;'>⚠️ Mismatch Intelligence Center</h1>
+            <p style='margin: 10px 0 0 0; font-size: 1.2rem; text-align: center; opacity: 0.95;'>
+                Interactive Visual Analytics | Instant Problem Detection | Actionable Insights
+            </p>
+        </div>
+        
+        <style>
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.05);
+            }
+        }
+        
+        @keyframes slideInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .metric-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 25px;
+            border-radius: 15px;
+            color: white;
+            text-align: center;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            transition: all 0.3s ease;
+            animation: slideInLeft 0.6s ease-out;
+        }
+        
+        .metric-box:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.25);
+            animation: pulse 1.5s infinite;
+        }
+        
+        .metric-box h2 {
+            font-size: 3rem;
+            font-weight: bold;
+            margin: 10px 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .metric-box p {
+            font-size: 1.1rem;
+            margin: 5px 0;
+            opacity: 0.95;
+        }
+        
+        .alert-box {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            padding: 20px;
+            border-radius: 12px;
+            color: white;
+            margin: 15px 0;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+            animation: fadeInDown 0.8s ease-out;
+        }
+        
+        .info-box {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            padding: 20px;
+            border-radius: 12px;
+            color: white;
+            margin: 15px 0;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        if len(mismatch_data) > 0:
+            # Animated KPI cards with scenario metrics
+            col1, col2, col3, col4 = st.columns(4)
+            
+            # Get scenario counts
+            scenario_counts = mismatch_data['mismatch_scenario'].value_counts()
+            no_issue_count = scenario_counts.get('✅ No Issue', 0)
+            diff_shop_count = scenario_counts.get('🔄 Sold at Different Shop', 0)
+            no_offload_count = scenario_counts.get("⚠️ Shop Didnt Offload", 0)
+            serial_mismatch_count = scenario_counts.get("🔢 Serial Number Mismatch", 0)
+            total_issues = len(mismatch_data)
+            issue_rate = ((diff_shop_count + no_offload_count + serial_mismatch_count) / total_issues * 100) if total_issues > 0 else 0
+            
+            with col1:
+                st.markdown(f"""
+                <div class="metric-box" style="background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);">
+                    <h2>{no_issue_count:,}</h2>
+                    <p>✅ No Issue</p>
+                    <p style="font-size: 0.9rem; margin-top: 8px;">Everything matches</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col2:
+                st.markdown(f"""
+                <div class="metric-box" style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);">
+                    <h2>{diff_shop_count:,}</h2>
+                    <p>🔄 Sold at Different Shop</p>
+                    <p style="font-size: 0.9rem; margin-top: 8px;">Critical routing issue</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col3:
+                st.markdown(f"""
+                <div class="metric-box" style="background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);">
+                    <h2>{no_offload_count:,}</h2>
+                    <p>⚠️ Shop Didnt Offload</p>
+                    <p style="font-size: 0.9rem; margin-top: 8px;">Missing records</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col4:
+                total_value = mismatch_data['nu_selling_price'].sum()
+                st.markdown(f"""
+                <div class="metric-box" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);">
+                    <h2>{issue_rate:.1f}%</h2>
+                    <p>📊 Issue Rate</p>
+                    <p style="font-size: 0.9rem; margin-top: 8px;">₵{total_value:,.0f} Total Value</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # Scenario breakdown explanation
+            st.markdown("""
+            <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px; color: white; margin: 15px 0;'>
+                <h3 style='margin: 0;'>📊 Scenario Classification</h3>
+                <p style='margin: 5px 0 0 0;'>
+                    ✅ <b>No Issue:</b> Shop Codes Match AND All Serials Match (serial_no = vc_serail_no = shop_serail_no)<br>
+                    🔄 <b>Sold at Different Shop:</b> Item sold at wrong location (dest_shop ≠ shop_sold)<br>
+                    ⚠️ <b>Shop Didnt Offload:</b> Missing offload/sale records (NULL values)<br>
+                    🔢 <b>Serial Number Mismatch:</b> Right shop but serials don't match
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Scenario breakdown chart
+            scenario_fig = create_scenario_breakdown_chart(mismatch_data)
+            st.plotly_chart(scenario_fig, use_container_width=True)
+            
+            st.markdown("---")
+            
+            # Alert box with insights
+            # Filter for actual mismatches only
+            actual_mismatches = mismatch_data[mismatch_data['mismatch_scenario'] == '🔄 Sold at Different Shop']
+            if len(actual_mismatches) > 0:
+                worst_pattern = actual_mismatches.groupby(['dest_shop', 'shop_sold']).size().idxmax()
+                worst_count = actual_mismatches.groupby(['dest_shop', 'shop_sold']).size().max()
+                
+                st.markdown(f"""
+                <div class="alert-box">
+                    <h3 style="margin: 0; font-size: 1.5rem;">🎯 Critical Alert</h3>
+                    <p style="margin: 10px 0 0 0; font-size: 1.1rem;">
+                        Worst 'Sold at Different Shop' pattern: <b>{worst_pattern[0]} → {worst_pattern[1]}</b> with <b>{worst_count}</b> cases.
+                        Take immediate action to resolve this routing issue!
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            st.markdown("---")
+            
+            # Visualization selector
+            st.markdown("""
+            <div class="info-box">
+                <h3 style="margin: 0;">📊 Choose Your Visualization</h3>
+                <p style="margin: 5px 0 0 0;">Click segments to drill down | Hover for details | Interactive exploration</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            viz_tab1, viz_tab2, viz_tab3 = st.tabs([
+                "🌞 Sunburst - Hierarchical View",
+                "🔄 Sankey - Flow Analysis",
+                "🔥 Heatmap - Pattern Matrix"
+            ])
+            
+            with viz_tab1:
+                st.markdown("""
+                <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 15px; border-radius: 10px; color: white; margin-bottom: 15px;'>
+                    <p style='margin: 0; font-size: 1rem;'>
+                        <b>💡 How to Use:</b> Click any segment to zoom in | Center = Zoom out<br>
+                        <b>Hierarchy:</b> 📍 Destination Shop (intended) → 🏪 Shop Sold (actual) → 📦 Group → 🔢 Serial Numbers
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                sunburst_fig = create_mismatch_sunburst(mismatch_data)
+                st.plotly_chart(sunburst_fig, use_container_width=True)
+            
+            with viz_tab2:
+                st.markdown("""
+                <div style='background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); padding: 15px; border-radius: 10px; color: white; margin-bottom: 15px;'>
+                    <p style='margin: 0; font-size: 1rem;'>
+                        <b>💡 Flow Visualization:</b> Track items from destination (left) to actual sold shop (right) | Thicker lines = more mismatches
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                sankey_fig = create_mismatch_sankey(mismatch_data)
+                st.plotly_chart(sankey_fig, use_container_width=True)
+            
+            with viz_tab3:
+                st.markdown("""
+                <div style='background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); padding: 15px; border-radius: 10px; color: white; margin-bottom: 15px;'>
+                    <p style='margin: 0; font-size: 1rem;'>
+                        <b>💡 Pattern Matrix:</b> Darker colors = more frequent mismatches | Identify hotspots instantly
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                heatmap_fig = create_mismatch_heatmap(mismatch_data)
+                st.plotly_chart(heatmap_fig, use_container_width=True)
+            
+            st.markdown("---")
+            
+            # Top mismatches with stunning presentation
+            st.markdown("""
+            <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 25px; border-radius: 15px; color: white; margin: 20px 0; box-shadow: 0 10px 30px rgba(0,0,0,0.2);'>
+                <h2 style='margin: 0; font-size: 2rem;'>🔍 Top Mismatch Patterns</h2>
+                <p style='margin: 10px 0 0 0; font-size: 1.1rem;'>Click any row for detailed drill-down analysis with vehicle tracking and item breakdown</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Get unique serial numbers for each pattern
+            mismatch_summary = mismatch_data.groupby(['dest_shop', 'shop_sold']).agg({
+                'serial_no': ['count', lambda x: ', '.join(x.astype(str).head(5).tolist())]
+            }).reset_index()
+            
+            # Flatten column names
+            mismatch_summary.columns = ['dest_shop', 'shop_sold', 'count', 'serial_preview']
+            
+            # Add total value
+            value_summary = mismatch_data.groupby(['dest_shop', 'shop_sold'])['nu_selling_price'].sum().reset_index()
+            mismatch_summary = mismatch_summary.merge(value_summary, on=['dest_shop', 'shop_sold'])
+            
+            # Rename and format
+            mismatch_summary.columns = ['Destination Shop', 'Actual Sold Shop', 'Count', 'Sample Serial Numbers', 'Total Value']
+            mismatch_summary = mismatch_summary.sort_values('Count', ascending=False).head(15)
+            
+            # Add sample serial numbers preview (first 5)
+            mismatch_summary['Sample Serial Numbers'] = mismatch_summary['Sample Serial Numbers'].str[:100] + '...'
+            
+            # Add severity indicator
+            max_count = mismatch_summary['Count'].max()
+            mismatch_summary['Severity'] = mismatch_summary['Count'].apply(
+                lambda x: '🔴 Critical' if x > max_count * 0.7 else ('🟡 High' if x > max_count * 0.4 else '🟢 Medium')
+            )
+            
+            # Create clickable table with selection
+            st.markdown("""
+            <div style='background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); padding: 15px; border-radius: 10px; color: white; margin: 15px 0;'>
+                <p style='margin: 0; font-size: 1.05rem;'>
+                    👆 <b>Click on any row</b> in the table below to see full details with vehicle numbers, item breakdown, and export options
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Use data_editor with selection mode
+            event = st.dataframe(
+                mismatch_summary,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Severity": st.column_config.TextColumn(
+                        "🚨 Severity",
+                        width="small"
+                    ),
+                    "Count": st.column_config.NumberColumn(
+                        "📊 Count",
+                        format="%d",
+                        help="Number of mismatched items"
+                    ),
+                    "Total Value": st.column_config.NumberColumn(
+                        "💰 Total Value (₵)",
+                        format="₵%.2f",
+                        help="Total value of mismatched items"
+                    ),
+                    "Destination Shop": st.column_config.TextColumn(
+                        "📍 Destination Shop",
+                        width="medium"
+                    ),
+                    "Actual Sold Shop": st.column_config.TextColumn(
+                        "🏪 Actual Sold Shop",
+                        width="medium"
+                    ),
+                    "Sample Serial Numbers": st.column_config.TextColumn(
+                        "🔢 Sample Serial Numbers (First 5)",
+                        width="large",
+                        help="Preview of serial numbers in this mismatch pattern"
+                    )
+                },
+                on_select="rerun",
+                selection_mode="single-row",
+                key="mismatch_pattern_selector"
+            )
+            
+            # Show drill-down details based on selection
+            if len(event.selection.rows) > 0:
+                selected_row_idx = event.selection.rows[0]
+                selected_dest_drill = mismatch_summary.iloc[selected_row_idx]['Destination Shop']
+                selected_sold_drill = mismatch_summary.iloc[selected_row_idx]['Actual Sold Shop']
+                
+                st.session_state['selected_dest'] = selected_dest_drill
+                st.session_state['selected_sold'] = selected_sold_drill
+            
+            # Display drill-down if a row is selected
+            if 'selected_dest' in st.session_state and 'selected_sold' in st.session_state:
+                selected_dest_drill = st.session_state['selected_dest']
+                selected_sold_drill = st.session_state['selected_sold']
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown(f"""
+                <div style='background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 25px; border-radius: 15px; color: white; margin: 20px 0; box-shadow: 0 10px 30px rgba(0,0,0,0.2); animation: fadeInDown 0.6s ease-out;'>
+                    <h2 style='margin: 0; font-size: 2rem;'>📊 Deep Dive Analysis</h2>
+                    <p style='margin: 10px 0 0 0; font-size: 1.3rem; font-weight: bold;'>
+                        Route: {selected_dest_drill} → {selected_sold_drill}
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                with st.spinner("🔄 Loading detailed records with AI-powered insights..."):
+                    drill_data = load_mismatch_drill_down(
+                        start_date, end_date, 
+                        selected_dest_drill, selected_sold_drill
+                    )
+                
+                if len(drill_data) > 0:
+                    # Success message with animation
+                    st.markdown(f"""
+                    <div style='background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%); padding: 15px; border-radius: 10px; color: white; margin: 15px 0; animation: slideInLeft 0.5s ease-out;'>
+                        <h3 style='margin: 0;'>✅ Found {len(drill_data):,} records for this mismatch pattern</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Animated summary metrics for drill-down
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.markdown(f"""
+                        <div class="metric-box" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                            <h2>{len(drill_data):,}</h2>
+                            <p>📦 Total Items</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col2:
+                        total_value = drill_data['nu_selling_price'].sum()
+                        st.markdown(f"""
+                        <div class="metric-box" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                            <h2>₵{total_value:,.0f}</h2>
+                            <p>💰 Total Value</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col3:
+                        unique_items = drill_data['vc_item_code'].nunique()
+                        st.markdown(f"""
+                        <div class="metric-box" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                            <h2>{unique_items}</h2>
+                            <p>🎯 Unique Items</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col4:
+                        unique_vehicles = drill_data['vc_vehicle_no'].nunique()
+                        st.metric("Vehicles Used", unique_vehicles)
+                    
+                    st.markdown("---")
+                    
+                    # Detailed table with all information
+                    display_cols_drill = [
+                        'serial_no', 'vc_item_code', 'vc_item_desc', 
+                        'dest_shop', 'shop_sold', 'dest_shop_name',
+                        'nu_selling_price', 'vc_vehicle_no', 'vc_warehouse_desc',
+                        'dt_doc_date', 'dt_wod_date', 'dt_invoice_date'
+                    ]
+                    
+                    # Add vehicle number column header
+                    drill_display = drill_data[display_cols_drill].copy()
+                    drill_display.columns = [
+                        'Serial No', 'Item Code', 'Item Description',
+                        'Destination Shop', 'Actual Sold Shop', 'Dest Shop Name',
+                        'Selling Price', 'Vehicle Number', 'Warehouse',
+                        'Doc Date', 'Offload Date', 'Invoice Date'
+                    ]
+                    
+                    st.dataframe(
+                        drill_display.style.format({
+                            'Selling Price': '₵{:,.2f}',
+                            'Doc Date': lambda x: x.strftime('%Y-%m-%d') if pd.notna(x) else '',
+                            'Offload Date': lambda x: x.strftime('%Y-%m-%d') if pd.notna(x) else '',
+                            'Invoice Date': lambda x: x.strftime('%Y-%m-%d') if pd.notna(x) else ''
+                        }),
+                        use_container_width=True,
+                        height=400
+                    )
+                    
+                    # Item breakdown
+                    st.markdown("#### 📦 Item Breakdown")
+                    
+                    item_breakdown = drill_data.groupby(['vc_item_code', 'vc_item_desc']).agg({
+                        'serial_no': 'count',
+                        'nu_selling_price': 'sum'
+                    }).reset_index()
+                    item_breakdown.columns = ['Item Code', 'Item Description', 'Quantity', 'Total Value']
+                    item_breakdown = item_breakdown.sort_values('Quantity', ascending=False)
+                    
+                    st.dataframe(
+                        item_breakdown.style.format({
+                            'Quantity': '{:,.0f}',
+                            'Total Value': '₵{:,.2f}'
+                        }),
+                        use_container_width=True
+                    )
+                    
+                    # Vehicle breakdown
+                    if drill_data['vc_vehicle_no'].notna().any():
+                        st.markdown("#### 🚚 Vehicle Breakdown")
+                        
+                        vehicle_breakdown = drill_data.groupby('vc_vehicle_no').agg({
+                            'serial_no': 'count',
+                            'nu_selling_price': 'sum'
+                        }).reset_index()
+                        vehicle_breakdown.columns = ['Vehicle Number', 'Quantity', 'Total Value']
+                        vehicle_breakdown = vehicle_breakdown.sort_values('Quantity', ascending=False)
+                        
+                        st.dataframe(
+                            vehicle_breakdown.style.format({
+                                'Quantity': '{:,.0f}',
+                                'Total Value': '₵{:,.2f}'
+                            }),
+                            use_container_width=True
+                        )
+                    
+                    # Download drill-down data
+                    csv_drill = drill_data.to_csv(index=False)
+                    st.download_button(
+                        label=f"📥 Download {selected_dest_drill}→{selected_sold_drill} Details",
+                        data=csv_drill,
+                        file_name=f"mismatch_{selected_dest_drill}_{selected_sold_drill}_{start_date}_{end_date}.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.warning("⚠️ No records found for this pattern")
+            
+            st.markdown("---")
+            
+            # Detailed mismatch records
+            st.markdown("### 📋 Detailed Mismatch Records")
+            
+            # Add filters
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                dest_shops = ['All'] + sorted(mismatch_data['dest_shop'].unique().tolist())
+                selected_dest = st.selectbox("Filter by Destination Shop", dest_shops)
+            
+            with col2:
+                sold_shops = ['All'] + sorted([x for x in mismatch_data['shop_sold'].unique().tolist() if x is not None])
+                selected_sold = st.selectbox("Filter by Actual Sold Shop", sold_shops)
+            
+            # Apply filters
+            filtered_mismatch = mismatch_data.copy()
+            if selected_dest != 'All':
+                filtered_mismatch = filtered_mismatch[filtered_mismatch['dest_shop'] == selected_dest]
+            if selected_sold != 'All':
+                filtered_mismatch = filtered_mismatch[filtered_mismatch['shop_sold'] == selected_sold]
+            
+            # Display table
+            st.dataframe(
+                filtered_mismatch[[
+                    'serial_no', 'dest_shop', 'shop_sold', 'dest_shop_name',
+                    'vc_item_desc', 'dt_doc_date', 'dt_invoice_date', 
+                    'nu_selling_price', 'vc_warehouse_desc'
+                ]].style.format({
+                    'nu_selling_price': '₵{:,.2f}',
+                    'dt_doc_date': lambda x: x.strftime('%Y-%m-%d') if pd.notna(x) else '',
+                    'dt_invoice_date': lambda x: x.strftime('%Y-%m-%d') if pd.notna(x) else ''
+                }),
+                use_container_width=True,
+                height=400
+            )
+            
+            # Download button
+            csv = filtered_mismatch.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Mismatch Details",
+                data=csv,
+                file_name=f"mismatch_details_{start_date}_{end_date}.csv",
+                mime="text/csv"
+            )
+        else:
+            st.success("🎉 No mismatches found in the selected date range!")
+    
+    with tab5:
+        st.markdown("### 🤖 AI-Powered Pattern Validation")
+        
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 10px; color: white; margin-bottom: 20px;'>
+            <h3 style='margin: 0;'>🧠 Intelligent Serial Number Analysis</h3>
+            <p style='margin: 10px 0 0 0; opacity: 0.9;'>
+                Using Machine Learning (Isolation Forest) and NLP (TF-IDF) to automatically detect 
+                anomalous serial numbers without explicit rules. The AI learns from your data!
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # AI Configuration
+        col1, col2, col3 = st.columns([2, 2, 1])
+        
+        with col1:
+            sample_size = st.number_input(
+                "📊 Number of serials to analyze",
+                min_value=100,
+                max_value=10000,
+                value=1000,
+                step=100,
+                help="More samples = better accuracy but slower processing"
+            )
+        
+        with col2:
+            contamination = st.slider(
+                "🎯 Anomaly sensitivity",
+                min_value=0.01,
+                max_value=0.20,
+                value=0.05,
+                step=0.01,
+                format="%.2f",
+                help="Expected % of anomalies (0.05 = 5%)"
+            )
+        
+        with col3:
+            if st.button("🚀 Run AI Analysis", type="primary"):
+                st.session_state['run_ai_validation'] = True
+        
+        if st.session_state.get('run_ai_validation', False):
+            # Load data
+            with st.spinner("🔄 Loading serial numbers..."):
+                ai_data = load_all_serials_for_ai(start_date, end_date, sample_size)
+            
+            if len(ai_data) == 0:
+                st.warning("⚠️ No data found for the selected date range")
+            else:
+                st.info(f"📊 Analyzing {len(ai_data):,} serial numbers...")
+                
+                # Train AI model
+                with st.spinner("🧠 Training AI model on your data patterns..."):
+                    validator = AISerialNumberValidator()
+                    
+                    try:
+                        train_result = validator.train(
+                            ai_data['serial_no'].tolist(),
+                            contamination=contamination
+                        )
+                        
+                        # Display training results
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            st.metric("🎓 Training Samples", f"{train_result['samples_trained']:,}")
+                        
+                        with col2:
+                            st.metric("🔍 Patterns Found", train_result['num_clusters'])
+                        
+                        with col3:
+                            st.metric("⚠️ Initial Outliers", train_result['outliers'])
+                        
+                        st.success("✅ AI model trained successfully!")
+                        
+                    except Exception as e:
+                        st.error(f"❌ Training failed: {str(e)}")
+                        st.stop()
+                
+                # Run predictions
+                with st.spinner("🔮 Running AI predictions..."):
+                    predictions = validator.predict(ai_data['serial_no'].tolist())
+                    
+                    # Add predictions to dataframe
+                    ai_data['ai_valid'] = [p['is_valid'] for p in predictions]
+                    ai_data['ai_confidence'] = [p['confidence'] for p in predictions]
+                    ai_data['ai_anomaly_score'] = [p['anomaly_score'] for p in predictions]
+                    ai_data['ai_reason'] = [p['reason'] for p in predictions]
+                    ai_data['ai_closest_pattern'] = [p['closest_pattern'] for p in predictions]
+                
+                # Summary metrics
+                st.markdown("---")
+                st.markdown("### 📊 AI Validation Summary")
+                
+                total_analyzed = len(ai_data)
+                total_valid = ai_data['ai_valid'].sum()
+                total_invalid = total_analyzed - total_valid
+                invalid_pct = (total_invalid / total_analyzed * 100) if total_analyzed > 0 else 0
+                avg_confidence = ai_data['ai_confidence'].mean()
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.markdown(f"""
+                        <div class="funnel-stage stage-loaded">
+                            <h2>{total_analyzed:,}</h2>
+                            <p>Total Analyzed</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+                
+                with col2:
+                    st.markdown(f"""
+                        <div class="funnel-stage stage-sold">
+                            <h2>{total_valid:,}</h2>
+                            <p>✅ Valid Patterns</p>
+                            <p style="font-size: 0.9rem; margin-top: 10px;">{100 - invalid_pct:.1f}%</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+                
+                with col3:
+                    st.markdown(f"""
+                        <div class="funnel-stage stage-mismatch">
+                            <h2>{total_invalid:,}</h2>
+                            <p>⚠️ Anomalies Detected</p>
+                            <p style="font-size: 0.9rem; margin-top: 10px;">{invalid_pct:.1f}%</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+                
+                with col4:
+                    st.markdown(f"""
+                        <div class="funnel-stage stage-offloaded">
+                            <h2>{avg_confidence:.1%}</h2>
+                            <p>Avg Confidence</p>
+                            <p style="font-size: 0.9rem; margin-top: 10px;">AI Certainty</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+                
+                st.markdown("---")
+                
+                # Visualization: Confidence distribution
+                st.markdown("### 📈 Confidence Score Distribution")
+                
+                fig_conf = px.histogram(
+                    ai_data,
+                    x='ai_confidence',
+                    nbins=50,
+                    color='ai_valid',
+                    color_discrete_map={True: '#4facfe', False: '#fa709a'},
+                    title='Distribution of AI Confidence Scores',
+                    labels={'ai_confidence': 'Confidence Score', 'ai_valid': 'Validation Result'},
+                    barmode='overlay'
+                )
+                fig_conf.update_layout(
+                    height=400,
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)'
+                )
+                st.plotly_chart(fig_conf, use_container_width=True)
+                
+                st.markdown("---")
+                
+                # Brand Analysis Section
+                st.markdown("### 🏷️ Brand Analysis: Serial Number Validity")
+                
+                # Extract brand from item description (first word before space or dash)
+                ai_data['brand'] = ai_data['vc_item_desc'].str.split(' |-|_').str[0].str.upper()
+                
+                # Check for scientific notation (Excel corruption)
+                ai_data['is_scientific'] = ai_data['serial_no'].astype(str).str.contains('E\+|e\+', regex=True, na=False)
+                
+                # Group by brand
+                brand_analysis = ai_data.groupby('brand').agg({
+                    'serial_no': 'count',
+                    'ai_valid': lambda x: x.sum(),
+                    'is_scientific': lambda x: x.sum(),
+                    'ai_confidence': 'mean'
+                }).reset_index()
+                
+                brand_analysis.columns = ['Brand', 'Total Serials', 'Valid Serials', 'Not Serial Numbers', 'Avg Confidence']
+                brand_analysis['Invalid Serials'] = brand_analysis['Total Serials'] - brand_analysis['Valid Serials']
+                brand_analysis['Valid %'] = (brand_analysis['Valid Serials'] / brand_analysis['Total Serials'] * 100).round(1)
+                brand_analysis['Invalid %'] = (brand_analysis['Invalid Serials'] / brand_analysis['Total Serials'] * 100).round(1)
+                brand_analysis = brand_analysis.sort_values('Total Serials', ascending=False)
+                
+                st.markdown(f"**Analysis of {brand_analysis['Brand'].nunique()} brands** - Showing serial number validity and corrupted data")
+                
+                # Visualization: Brand breakdown
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Bar chart: Valid vs Invalid by brand
+                    fig_brand = go.Figure()
+                    
+                    fig_brand.add_trace(go.Bar(
+                        name='Valid Serials',
+                        x=brand_analysis['Brand'].head(15),
+                        y=brand_analysis['Valid Serials'].head(15),
+                        marker=dict(color='#4facfe'),
+                        text=brand_analysis['Valid Serials'].head(15),
+                        textposition='auto'
+                    ))
+                    
+                    fig_brand.add_trace(go.Bar(
+                        name='Invalid Serials',
+                        x=brand_analysis['Brand'].head(15),
+                        y=brand_analysis['Invalid Serials'].head(15),
+                        marker=dict(color='#fa709a'),
+                        text=brand_analysis['Invalid Serials'].head(15),
+                        textposition='auto'
+                    ))
+                    
+                    fig_brand.add_trace(go.Bar(
+                        name='Not Serial Numbers',
+                        x=brand_analysis['Brand'].head(15),
+                        y=brand_analysis['Not Serial Numbers'].head(15),
+                        marker=dict(color='#ff6b6b'),
+                        text=brand_analysis['Not Serial Numbers'].head(15),
+                        textposition='auto'
+                    ))
+                    
+                    fig_brand.update_layout(
+                        title='Top 15 Brands: Valid vs Invalid Serials',
+                        barmode='stack',
+                        height=400,
+                        xaxis_title='Brand',
+                        yaxis_title='Count',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    
+                    st.plotly_chart(fig_brand, use_container_width=True)
+                
+                with col2:
+                    # Pie chart: Not Serial Numbers breakdown
+                    not_serial_brands = brand_analysis[brand_analysis['Not Serial Numbers'] > 0].nlargest(10, 'Not Serial Numbers')
+                    
+                    fig_not_serial = px.pie(
+                        not_serial_brands,
+                        values='Not Serial Numbers',
+                        names='Brand',
+                        title='Top 10 Brands: Not Actual Serial Numbers',
+                        color_discrete_sequence=px.colors.sequential.Reds_r
+                    )
+                    
+                    fig_not_serial.update_layout(
+                        height=400,
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)'
+                    )
+                    
+                    st.plotly_chart(fig_not_serial, use_container_width=True)
+                
+                # Detailed brand table
+                st.markdown("#### 📊 Detailed Brand Breakdown")
+                
+                # Reorder columns for display
+                brand_display = brand_analysis[[
+                    'Brand', 'Total Serials', 'Valid Serials', 'Invalid Serials', 
+                    'Not Serial Numbers', 'Valid %', 'Invalid %', 'Avg Confidence'
+                ]].copy()
+                
+                # Style the table with conditional formatting
+                def highlight_brand_issues(row):
+                    colors = []
+                    for col in row.index:
+                        if col == 'Invalid %':
+                            val = row[col]
+                            if val > 20:
+                                colors.append('background-color: #ffcccc')
+                            elif val > 10:
+                                colors.append('background-color: #ffe6e6')
+                            elif val > 5:
+                                colors.append('background-color: #fff2f2')
+                            else:
+                                colors.append('')
+                        elif col == 'Not Serial Numbers':
+                            val = row[col]
+                            if val > 0:
+                                colors.append('background-color: #ffcccc; font-weight: bold')
+                            else:
+                                colors.append('')
+                        else:
+                            colors.append('')
+                    return colors
+                
+                st.dataframe(
+                    brand_display.style.format({
+                        'Total Serials': '{:,.0f}',
+                        'Valid Serials': '{:,.0f}',
+                        'Invalid Serials': '{:,.0f}',
+                        'Not Serial Numbers': '{:,.0f}',
+                        'Valid %': '{:.1f}%',
+                        'Invalid %': '{:.1f}%',
+                        'Avg Confidence': '{:.2%}'
+                    }).apply(highlight_brand_issues, axis=1),
+                    use_container_width=True,
+                    height=400,
+                    on_select="rerun",
+                    selection_mode="single-row"
+                )
+                
+                # Handle row selection for drill-down
+                if len(st.session_state.get('selection', {}).get('selection', {}).get('rows', [])) > 0:
+                    selected_row_idx = st.session_state['selection']['selection']['rows'][0]
+                    selected_brand = brand_display.iloc[selected_row_idx]['Brand']
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.markdown(f"""
+                    <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 25px; border-radius: 15px; color: white; margin: 20px 0; box-shadow: 0 10px 30px rgba(0,0,0,0.2);'>
+                        <h2 style='margin: 0; font-size: 2rem;'>📊 Brand Detail: {selected_brand}</h2>
+                        <p style='margin: 10px 0 0 0; font-size: 1.1rem;'>
+                            Detailed serial number breakdown with validation status
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Filter data for selected brand
+                    brand_detail = ai_data[ai_data['brand'] == selected_brand].copy()
+                    
+                    # Summary metrics
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        valid_count = brand_detail['ai_valid'].sum()
+                        st.markdown(f"""
+                        <div class="metric-box" style="background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);">
+                            <h2>{valid_count:,}</h2>
+                            <p>✅ Valid Serials</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col2:
+                        invalid_count = (~brand_detail['ai_valid']).sum()
+                        st.markdown(f"""
+                        <div class="metric-box" style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);">
+                            <h2>{invalid_count:,}</h2>
+                            <p>❌ Invalid Serials</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col3:
+                        avg_conf = brand_detail['ai_confidence'].mean()
+                        st.markdown(f"""
+                        <div class="metric-box" style="background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);">
+                            <h2>{avg_conf:.1%}</h2>
+                            <p>📊 Avg Confidence</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col4:
+                        unique_items = brand_detail['vc_item_code'].nunique()
+                        st.markdown(f"""
+                        <div class="metric-box" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);">
+                            <h2>{unique_items:,}</h2>
+                            <p>🎯 Unique Items</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    st.markdown("---")
+                    
+                    # Detailed table with all information
+                    st.markdown("#### 📋 Complete Serial List")
+                    
+                    # Prepare display dataframe
+                    detail_display = brand_detail[[
+                        'serial_no', 'vc_item_code', 'vc_item_desc', 
+                        'vc_shop_code', 'shop_name', 'shop_sold',
+                        'ai_valid', 'ai_confidence', 'ai_anomaly_score',
+                        'dt_doc_date', 'dt_invoice_date'
+                    ]].copy()
+                    
+                    detail_display.columns = [
+                        'Serial Number', 'Item Code', 'Item Description',
+                        'Dest Shop', 'Shop Name', 'Shop Sold',
+                        'Valid', 'Confidence', 'Anomaly Score',
+                        'Doc Date', 'Invoice Date'
+                    ]
+                    
+                    # Add status indicator
+                    detail_display['Status'] = detail_display['Valid'].map({
+                        True: '✅ Valid',
+                        False: '❌ Invalid'
+                    })
+                    
+                    # Reorder columns
+                    detail_display = detail_display[[
+                        'Status', 'Serial Number', 'Item Code', 'Item Description',
+                        'Dest Shop', 'Shop Name', 'Shop Sold',
+                        'Confidence', 'Anomaly Score',
+                        'Doc Date', 'Invoice Date'
+                    ]]
+                    
+                    # Style function for row highlighting
+                    def highlight_validity(row):
+                        if row['Status'] == '❌ Invalid':
+                            return ['background-color: #ffcccc'] * len(row)
+                        return [''] * len(row)
+                    
+                    st.dataframe(
+                        detail_display.style.format({
+                            'Confidence': '{:.1%}',
+                            'Anomaly Score': '{:.3f}',
+                            'Doc Date': lambda x: x.strftime('%Y-%m-%d') if pd.notna(x) else '',
+                            'Invoice Date': lambda x: x.strftime('%Y-%m-%d') if pd.notna(x) else ''
+                        }).apply(highlight_validity, axis=1),
+                        use_container_width=True,
+                        height=500
+                    )
+                    
+                    # Download brand detail
+                    csv_detail = detail_display.to_csv(index=False)
+                    st.download_button(
+                        label=f"📥 Download {selected_brand} Details",
+                        data=csv_detail,
+                        file_name=f"{selected_brand}_serial_details_{start_date}_{end_date}.csv",
+                        mime="text/csv",
+                        key=f"download_{selected_brand}"
+                    )
+                
+                # Key insights
+                st.markdown("#### 💡 Key Insights")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    worst_brand = brand_analysis.nlargest(1, 'Invalid %').iloc[0]
+                    st.warning(f"**Highest Invalid Rate:**\n\n{worst_brand['Brand']}: {worst_brand['Invalid %']:.1f}% ({int(worst_brand['Invalid Serials'])} invalid)")
+                
+                with col2:
+                    most_corrupted = brand_analysis.nlargest(1, 'Not Serial Numbers').iloc[0]
+                    if most_corrupted['Not Serial Numbers'] > 0:
+                        st.error(f"**Most Corrupted Data:**\n\n{most_corrupted['Brand']}: {int(most_corrupted['Not Serial Numbers'])} not serial numbers")
+                    else:
+                        st.success("**No Corrupted Data:**\n\nAll brands have valid serial format")
+                
+                with col3:
+                    best_brand = brand_analysis.nlargest(1, 'Valid %').iloc[0]
+                    st.success(f"**Best Data Quality:**\n\n{best_brand['Brand']}: {best_brand['Valid %']:.1f}% valid ({int(best_brand['Valid Serials'])} serials)")
+                
+                # Download brand analysis
+                csv_brand = brand_display.to_csv(index=False)
+                st.download_button(
+                    label="📥 Download Brand Analysis",
+                    data=csv_brand,
+                    file_name=f"brand_serial_analysis_{start_date}_{end_date}.csv",
+                    mime="text/csv"
+                )
+                
+                st.markdown("---")
+                
+                # Filter options
+                st.markdown("### 🔍 Anomaly Details")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    filter_status = st.selectbox(
+                        "Filter by status",
+                        ['All', 'Valid Only', 'Anomalies Only']
+                    )
+                
+                with col2:
+                    min_confidence = st.slider(
+                        "Minimum confidence threshold",
+                        0.0, 1.0, 0.0, 0.05
+                    )
+                
+                with col3:
+                    show_closest = st.checkbox("Show closest pattern", value=True)
+                
+                # Apply filters
+                filtered_ai = ai_data.copy()
+                
+                if filter_status == 'Valid Only':
+                    filtered_ai = filtered_ai[filtered_ai['ai_valid'] == True]
+                elif filter_status == 'Anomalies Only':
+                    filtered_ai = filtered_ai[filtered_ai['ai_valid'] == False]
+                
+                filtered_ai = filtered_ai[filtered_ai['ai_confidence'] >= min_confidence]
+                
+                # Display columns
+                display_columns = [
+                    'serial_no', 'vc_item_desc', 'shop_name', 
+                    'ai_valid', 'ai_confidence', 'ai_anomaly_score', 'ai_reason'
+                ]
+                
+                if show_closest and 'ai_closest_pattern' in filtered_ai.columns:
+                    display_columns.append('ai_closest_pattern')
+                
+                # Style the dataframe
+                def highlight_ai_invalid(row):
+                    colors = []
+                    for col in row.index:
+                        if col == 'ai_valid':
+                            colors.append('background-color: #ffcccc' if not row[col] else 'background-color: #ccffcc')
+                        elif col == 'ai_confidence':
+                            val = row[col]
+                            if val < 0.3:
+                                colors.append('background-color: #ffcccc')
+                            elif val < 0.6:
+                                colors.append('background-color: #fff2cc')
+                            else:
+                                colors.append('background-color: #ccffcc')
+                        else:
+                            colors.append('')
+                    return colors
+                
+                st.dataframe(
+                    filtered_ai[display_columns].style.format({
+                        'ai_confidence': '{:.2%}',
+                        'ai_anomaly_score': '{:.3f}',
+                        'ai_valid': lambda x: '✅ Valid' if x else '⚠️ Anomaly'
+                    }).apply(highlight_ai_invalid, axis=1),
+                    use_container_width=True,
+                    height=500
+                )
+                
+                # Download anomalies
+                anomalies_only = ai_data[ai_data['ai_valid'] == False]
+                
+                if len(anomalies_only) > 0:
+                    st.markdown(f"### 📥 Export Anomalies ({len(anomalies_only):,} records)")
+                    
+                    csv_anomalies = anomalies_only.to_csv(index=False)
+                    st.download_button(
+                        label="📥 Download All Anomalies",
+                        data=csv_anomalies,
+                        file_name=f"ai_anomalies_{start_date}_{end_date}.csv",
+                        mime="text/csv"
+                    )
+                    
+                    # Show top anomaly reasons
+                    st.markdown("### 🔎 Top Anomaly Reasons")
+                    
+                    reason_counts = anomalies_only['ai_reason'].value_counts().head(10)
+                    
+                    fig_reasons = px.bar(
+                        x=reason_counts.values,
+                        y=reason_counts.index,
+                        orientation='h',
+                        title='Most Common Anomaly Patterns',
+                        labels={'x': 'Count', 'y': 'Reason'},
+                        color=reason_counts.values,
+                        color_continuous_scale='Reds'
+                    )
+                    fig_reasons.update_layout(
+                        height=400,
+                        showlegend=False,
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)'
+                    )
+                    st.plotly_chart(fig_reasons, use_container_width=True)
+                
+                # Pattern insights
+                st.markdown("---")
+                st.markdown("### 🧠 AI Pattern Insights")
+                
+                pattern_summary = validator.get_pattern_summary()
+                
+                if 'clusters' in pattern_summary:
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.metric("📊 Distinct Patterns", pattern_summary['total_clusters'])
+                    
+                    with col2:
+                        st.metric("🔴 Outliers in Training", pattern_summary['outlier_cluster_size'])
+                    
+                    # Show sample patterns
+                    with st.expander("🔍 View Learned Pattern Examples", expanded=False):
+                        for cluster_name, cluster_info in list(pattern_summary['clusters'].items())[:5]:
+                            st.markdown(f"**{cluster_name}** ({cluster_info['size']} serials)")
+                            st.code('\n'.join(cluster_info['samples']))
+    
+    # Footer
+    st.markdown("---")
+    st.markdown("""
+        <div style='text-align: center; color: #7f8c8d; padding: 20px;'>
+            <p>📦 Serial Number Tracking Dashboard | Data refreshed every 10 minutes</p>
+            <p style='font-size: 0.9rem;'>Built with ❤️ using Streamlit & PostgreSQL | AI-powered by scikit-learn</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    main()
