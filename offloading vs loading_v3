@@ -1,0 +1,1960 @@
+import streamlit as st
+import streamlit.components.v1 as components
+import pandas as pd
+import psycopg2
+from psycopg2.pool import SimpleConnectionPool
+from psycopg2.extras import RealDictCursor
+from contextlib import contextmanager
+import plotly.express as px
+import plotly.graph_objects as go
+from datetime import datetime, timedelta
+import numpy as np
+
+# ============================================================
+# PAGE CONFIGURATION
+# ============================================================
+st.set_page_config(
+    page_title="📦 Supply Chain Funnel",
+    page_icon="📦",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Custom CSS
+st.markdown("""
+<style>
+    /* Base Responsive Setup - Full Width */
+    * {
+        box-sizing: border-box;
+    }
+    
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    
+    /* Remove default padding to use full width */
+    .block-container {
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+        max-width: 100% !important;
+    }
+    
+    @media (min-width: 768px) {
+        .block-container {
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+        }
+    }
+    
+    @media (min-width: 1400px) {
+        .block-container {
+            padding-left: 1.5rem !important;
+            padding-right: 1.5rem !important;
+            max-width: 100% !important;
+        }
+    }
+    
+    .main-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 25px;
+        border-radius: 15px;
+        color: white;
+        margin-bottom: 15px;
+        text-align: center;
+        padding: 15px 25px;
+    }
+    
+    .main-header h1 {
+        margin: 0;
+        font-size: 1.9rem;
+        font-weight: bold;
+    }
+    
+    .metric-box {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        text-align: center;
+        border-left: 4px solid #667eea;
+    }
+    
+    .metric-value {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #667eea;
+        margin: 10px 0;
+    }
+    
+    .metric-label {
+        font-size: 0.9rem;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    
+    .dropoff-badge {
+        background: #e74c3c;
+        color: white;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: bold;
+        display: inline-block;
+        margin-top: 5px;
+    }
+    
+    /* Sticky Issue Badge */
+    .issue-badge-sticky {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+        color: white;
+        padding: 20px 25px;
+        border-radius: 15px;
+        box-shadow: 0 8px 20px rgba(231, 76, 60, 0.4);
+        z-index: 9999;
+        cursor: pointer;
+        animation: shake 2s infinite, pulse 2s infinite;
+        border: 3px solid white;
+        text-align: center;
+        min-width: 180px;
+    }
+    
+    .issue-badge-sticky:hover {
+        transform: scale(1.05);
+        box-shadow: 0 12px 30px rgba(231, 76, 60, 0.6);
+    }
+    
+    @keyframes shake {
+        0%, 100% { transform: translateX(0) rotate(0deg); }
+        10%, 30%, 50%, 70%, 90% { transform: translateX(-2px) rotate(-1deg); }
+        20%, 40%, 60%, 80% { transform: translateX(2px) rotate(1deg); }
+    }
+    
+    @keyframes pulse {
+        0%, 100% { box-shadow: 0 8px 20px rgba(231, 76, 60, 0.4); }
+        50% { box-shadow: 0 8px 30px rgba(231, 76, 60, 0.8); }
+    }
+    
+    .issue-count {
+        font-size: 2.5rem;
+        font-weight: bold;
+        margin: 5px 0;
+    }
+    
+    .issue-label {
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        opacity: 0.95;
+    }
+    
+    /* Top Shop Alert Popup */
+    .shop-alert-popup {
+        position: fixed;
+        top: 80px;
+        right: 30px;
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(238, 90, 111, 0.5);
+        z-index: 10000;
+        max-width: 350px;
+        animation: slideInRight 0.5s ease-out, shake 2s infinite;
+        border: 2px solid white;
+    }
+    
+    .shop-alert-popup.hidden {
+        display: none;
+    }
+    
+    @keyframes slideInRight {
+        from {
+            transform: translateX(400px);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+    
+    .close-btn {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: rgba(255,255,255,0.3);
+        border: none;
+        color: white;
+        font-size: 20px;
+        cursor: pointer;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        line-height: 1;
+        font-weight: bold;
+    }
+    
+    .close-btn:hover {
+        background: rgba(255,255,255,0.5);
+    }
+    
+    .shop-alert-title {
+        font-size: 1.3rem;
+        font-weight: bold;
+        margin-bottom: 10px;
+        padding-right: 30px;
+        color: #ffffff;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+    }
+    
+    .shop-list {
+        margin-top: 10px;
+        font-size: 1rem;
+    }
+    
+    .shop-item {
+        background: rgba(255,255,255,0.25);
+        padding: 10px 12px;
+        margin: 6px 0;
+        border-radius: 8px;
+        display: flex;
+        justify-content: space-between;
+        font-size: 1.05rem;
+        color: #ffffff;
+        font-weight: 500;
+    }
+    
+    .shop-item strong {
+        font-size: 1.15rem;
+        letter-spacing: 0.5px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ============================================================
+# DATABASE CONNECTION
+# ============================================================
+@st.cache_resource
+def get_connection_pool():
+    return SimpleConnectionPool(
+        minconn=1, maxconn=10,
+        host='localhost', port=3307,
+        user='postgres', password='hello', dbname='WH'
+    )
+
+@contextmanager
+def get_db_connection():
+    pool = get_connection_pool()
+    conn = pool.getconn()
+    try:
+        yield conn
+    finally:
+        pool.putconn(conn)
+
+# ============================================================
+# DATA FUNCTIONS
+# ============================================================
+@st.cache_data(ttl=300)
+def get_funnel_data(start_date, end_date):
+    """Get funnel metrics with drop-offs"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Convert dates to strings
+        start_str = start_date.strftime('%Y-%m-%d') if hasattr(start_date, 'strftime') else str(start_date)
+        end_str = end_date.strftime('%Y-%m-%d') if hasattr(end_date, 'strftime') else str(end_date)
+        
+        query = f"""
+            SELECT 
+                -- Stage 1: Loaded at Warehouse
+                COUNT(CASE WHEN serial_no IS NOT NULL AND TRIM(serial_no) != '' 
+                      THEN 1 END) as stage1_loaded,
+                
+                -- Stage 2: Offloaded to Shop
+                COUNT(CASE WHEN vc_serail_no IS NOT NULL AND TRIM(vc_serail_no) != '' 
+                      THEN 1 END) as stage2_offloaded,
+                
+                -- Stage 3: Sold
+                COUNT(CASE WHEN shop_serail_no IS NOT NULL AND TRIM(shop_serail_no) != '' 
+                      THEN 1 END) as stage3_sold,
+                
+                -- Issues
+                SUM(CASE WHEN remarks2 LIKE '⚠️%' THEN 1 ELSE 0 END) as total_issues,
+                SUM(CASE WHEN remarks2 LIKE '%Sold without offloading%' THEN 1 ELSE 0 END) as sold_without_offload,
+                SUM(CASE WHEN remarks2 LIKE '%Shop mismatch%' THEN 1 ELSE 0 END) as shop_mismatch,
+                SUM(CASE WHEN remarks2 LIKE '%Serial mismatch%' THEN 1 ELSE 0 END) as serial_mismatch,
+                
+                -- Total records
+                COUNT(*) as total_records
+            FROM serial_no_dailydata
+            WHERE loaded_datetime >= '{start_str}' AND loaded_datetime <= '{end_str}'
+        """
+        
+        cursor.execute(query)
+        result = cursor.fetchone()
+        return dict(result) if result else {}
+
+@st.cache_data(ttl=300)
+def get_brand_funnel(start_date, end_date):
+    """Get funnel by brand"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Convert dates to strings
+        start_str = start_date.strftime('%Y-%m-%d') if hasattr(start_date, 'strftime') else str(start_date)
+        end_str = end_date.strftime('%Y-%m-%d') if hasattr(end_date, 'strftime') else str(end_date)
+        
+        query = f"""
+            SELECT 
+                brand,
+                COUNT(CASE WHEN serial_no IS NOT NULL AND TRIM(serial_no) != '' 
+                      THEN 1 END) as loaded,
+                COUNT(CASE WHEN vc_serail_no IS NOT NULL AND TRIM(vc_serail_no) != '' 
+                      THEN 1 END) as offloaded,
+                COUNT(CASE WHEN shop_serail_no IS NOT NULL AND TRIM(shop_serail_no) != '' 
+                      THEN 1 END) as sold,
+                SUM(CASE WHEN remarks2 LIKE '⚠️%' THEN 1 ELSE 0 END) as issues
+            FROM serial_no_dailydata
+            WHERE loaded_datetime >= '{start_str}' AND loaded_datetime <= '{end_str}'
+            GROUP BY brand
+            HAVING COUNT(*) > 10
+            ORDER BY loaded DESC
+            LIMIT 20
+        """
+        
+        cursor.execute(query)
+        return pd.DataFrame(cursor.fetchall())
+
+@st.cache_data(ttl=300)
+def get_issue_details(start_date, end_date, issue_type=None):
+    """Get detailed issue records"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Convert dates to strings
+        start_str = start_date.strftime('%Y-%m-%d') if hasattr(start_date, 'strftime') else str(start_date)
+        end_str = end_date.strftime('%Y-%m-%d') if hasattr(end_date, 'strftime') else str(end_date)
+        
+        query = f"""
+            SELECT 
+                brand, "group", subgroup,
+                serial_no, vc_serail_no, shop_serail_no,
+                vc_shop_code, shop_sold,
+                loaded_datetime, remarks2
+            FROM serial_no_dailydata
+            WHERE loaded_datetime >= '{start_str}' AND loaded_datetime <= '{end_str}'
+              AND remarks2 LIKE '⚠️%'
+        """
+        
+        if issue_type:
+            # Escape single quotes in issue_type
+            issue_type_escaped = issue_type.replace("'", "''")
+            query += f" AND remarks2 LIKE '%{issue_type_escaped}%'"
+        
+        query += " ORDER BY loaded_datetime DESC"
+        
+        cursor.execute(query)
+        return pd.DataFrame(cursor.fetchall())
+
+@st.cache_data(ttl=300)
+def get_top_issue_shops(start_date, end_date, issue_type=None):
+    """Get shops with most issues, optionally filtered by issue type"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Convert dates to strings
+        start_str = start_date.strftime('%Y-%m-%d') if hasattr(start_date, 'strftime') else str(start_date)
+        end_str = end_date.strftime('%Y-%m-%d') if hasattr(end_date, 'strftime') else str(end_date)
+        
+        # Base query
+        query = f"""
+            SELECT 
+                vc_shop_code,
+                COUNT(*) as issue_count,
+                SUM(CASE WHEN remarks2 LIKE '%Shop mismatch%' THEN 1 ELSE 0 END) as shop_mismatch,
+                SUM(CASE WHEN remarks2 LIKE '%Serial mismatch%' THEN 1 ELSE 0 END) as serial_mismatch,
+                SUM(CASE WHEN remarks2 LIKE '%Sold without offloading%' THEN 1 ELSE 0 END) as sold_without_offload
+            FROM serial_no_dailydata
+            WHERE loaded_datetime >= '{start_str}' AND loaded_datetime <= '{end_str}'
+              AND remarks2 LIKE '⚠️%'
+              AND vc_shop_code IS NOT NULL
+        """
+        
+        # Add filter for specific issue type
+        if issue_type:
+            issue_type_escaped = issue_type.replace("'", "''")
+            query += f" AND remarks2 LIKE '%{issue_type_escaped}%'"
+        
+        query += """
+            GROUP BY vc_shop_code
+            ORDER BY issue_count DESC
+            LIMIT 10
+        """
+        
+        cursor.execute(query)
+        return pd.DataFrame(cursor.fetchall())
+
+@st.cache_data(ttl=300)
+def get_shop_issues_by_brand(start_date, end_date, shop_code, issue_type=None):
+    """Get issue breakdown by brand for a specific shop"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        start_str = start_date.strftime('%Y-%m-%d') if hasattr(start_date, 'strftime') else str(start_date)
+        end_str = end_date.strftime('%Y-%m-%d') if hasattr(end_date, 'strftime') else str(end_date)
+        
+        query = f"""
+            SELECT 
+                brand,
+                COUNT(*) as issue_count
+            FROM serial_no_dailydata
+            WHERE loaded_datetime >= '{start_str}' AND loaded_datetime <= '{end_str}'
+              AND remarks2 LIKE '⚠️%'
+              AND vc_shop_code = '{shop_code}'
+        """
+        
+        if issue_type:
+            issue_type_escaped = issue_type.replace("'", "''")
+            query += f" AND remarks2 LIKE '%{issue_type_escaped}%'"
+        
+        query += """
+            GROUP BY brand
+            ORDER BY issue_count DESC
+            LIMIT 15
+        """
+        
+        cursor.execute(query)
+        return pd.DataFrame(cursor.fetchall())
+
+@st.cache_data(ttl=300)
+def get_shop_issues_by_brand_date(start_date, end_date, shop_code, issue_type=None):
+    """Get issue breakdown by brand and date for a specific shop, optionally filtered by issue type"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Convert dates to strings
+        start_str = start_date.strftime('%Y-%m-%d') if hasattr(start_date, 'strftime') else str(start_date)
+        end_str = end_date.strftime('%Y-%m-%d') if hasattr(end_date, 'strftime') else str(end_date)
+        
+        query = f"""
+            SELECT 
+                DATE(loaded_datetime) as load_date,
+                brand,
+                COUNT(*) as issue_count
+            FROM serial_no_dailydata
+            WHERE loaded_datetime >= '{start_str}' AND loaded_datetime <= '{end_str}'
+              AND remarks2 LIKE '⚠️%'
+              AND vc_shop_code = '{shop_code}'
+        """
+        
+        # Add filter for specific issue type
+        if issue_type:
+            issue_type_escaped = issue_type.replace("'", "''")
+            query += f" AND remarks2 LIKE '%{issue_type_escaped}%'"
+        
+        query += """
+            GROUP BY DATE(loaded_datetime), brand
+            ORDER BY load_date, issue_count DESC
+        """
+        
+        cursor.execute(query)
+        return pd.DataFrame(cursor.fetchall())
+
+@st.cache_data(ttl=300)
+def get_issue_details_by_date(start_date, end_date, shop_code, selected_date, issue_type=None):
+    """Get detailed issue records for a specific date and shop"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Convert dates to strings
+        start_str = start_date.strftime('%Y-%m-%d') if hasattr(start_date, 'strftime') else str(start_date)
+        end_str = end_date.strftime('%Y-%m-%d') if hasattr(end_date, 'strftime') else str(end_date)
+        selected_date_str = selected_date.strftime('%Y-%m-%d') if hasattr(selected_date, 'strftime') else str(selected_date)
+        
+        query = f"""
+            SELECT 
+                loaded_datetime,
+                brand,
+                "group",
+                subgroup,
+                serial_no,
+                vc_serail_no,
+                shop_serail_no,
+                vc_shop_code,
+                shop_sold,
+                vc_vehicle_no,
+                vc_vehicle_no_2,
+                remarks2
+            FROM serial_no_dailydata
+            WHERE loaded_datetime >= '{start_str}' AND loaded_datetime <= '{end_str}'
+              AND DATE(loaded_datetime) = '{selected_date_str}'
+              AND remarks2 LIKE '⚠️%'
+              AND vc_shop_code = '{shop_code}'
+        """
+        
+        # Add filter for specific issue type
+        if issue_type:
+            issue_type_escaped = issue_type.replace("'", "''")
+            query += f" AND remarks2 LIKE '%{issue_type_escaped}%'"
+        
+        query += """
+            ORDER BY loaded_datetime DESC, brand
+        """
+        
+        cursor.execute(query)
+        return pd.DataFrame(cursor.fetchall())
+
+@st.cache_data(ttl=300)
+def get_vehicle_mismatches(start_date, end_date, shop_code=None):
+    """Get vehicle number mismatches between warehouse departure and shop arrival"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        start_str = start_date.strftime('%Y-%m-%d') if hasattr(start_date, 'strftime') else str(start_date)
+        end_str = end_date.strftime('%Y-%m-%d') if hasattr(end_date, 'strftime') else str(end_date)
+        
+        query = f"""
+            SELECT 
+                vc_shop_code,
+                brand,
+                "group",
+                serial_no,
+                vc_vehicle_no as warehouse_vehicle,
+                vc_vehicle_no_2 as shop_vehicle,
+                loaded_datetime,
+                remarks2
+            FROM serial_no_dailydata
+            WHERE loaded_datetime >= '{start_str}' AND loaded_datetime <= '{end_str}'
+              AND vc_vehicle_no IS NOT NULL 
+              AND vc_vehicle_no_2 IS NOT NULL
+              AND TRIM(vc_vehicle_no) != ''
+              AND TRIM(vc_vehicle_no_2) != ''
+              AND vc_vehicle_no != vc_vehicle_no_2
+        """
+        
+        if shop_code and shop_code != 'All':
+            query += f" AND vc_shop_code = '{shop_code}'"
+        
+        query += " ORDER BY loaded_datetime DESC"
+        
+        cursor.execute(query)
+        return pd.DataFrame(cursor.fetchall())
+
+@st.cache_data(ttl=300)
+def get_vehicle_mismatch_summary(start_date, end_date):
+    """Get summary of vehicle mismatches by shop"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        start_str = start_date.strftime('%Y-%m-%d') if hasattr(start_date, 'strftime') else str(start_date)
+        end_str = end_date.strftime('%Y-%m-%d') if hasattr(end_date, 'strftime') else str(end_date)
+        
+        query = f"""
+            SELECT 
+                vc_shop_code,
+                COUNT(*) as vehicle_mismatch_count,
+                COUNT(DISTINCT vc_vehicle_no) as unique_wh_vehicles,
+                COUNT(DISTINCT vc_vehicle_no_2) as unique_shop_vehicles,
+                COUNT(DISTINCT brand) as affected_brands
+            FROM serial_no_dailydata
+            WHERE loaded_datetime >= '{start_str}' AND loaded_datetime <= '{end_str}'
+              AND vc_vehicle_no IS NOT NULL 
+              AND vc_vehicle_no_2 IS NOT NULL
+              AND TRIM(vc_vehicle_no) != ''
+              AND TRIM(vc_vehicle_no_2) != ''
+              AND vc_vehicle_no != vc_vehicle_no_2
+              AND vc_shop_code IS NOT NULL
+            GROUP BY vc_shop_code
+            ORDER BY vehicle_mismatch_count DESC
+            LIMIT 20
+        """
+        
+        cursor.execute(query)
+        return pd.DataFrame(cursor.fetchall())
+
+@st.cache_data(ttl=300)
+def get_transit_accuracy_metrics(start_date, end_date):
+    """Calculate overall transit accuracy and vehicle tracking metrics"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        start_str = start_date.strftime('%Y-%m-%d') if hasattr(start_date, 'strftime') else str(start_date)
+        end_str = end_date.strftime('%Y-%m-%d') if hasattr(end_date, 'strftime') else str(end_date)
+        
+        query = f"""
+            SELECT 
+                COUNT(*) as total_with_vehicle_data,
+                SUM(CASE WHEN vc_vehicle_no = vc_vehicle_no_2 THEN 1 ELSE 0 END) as vehicle_match,
+                SUM(CASE WHEN vc_vehicle_no != vc_vehicle_no_2 THEN 1 ELSE 0 END) as vehicle_mismatch,
+                SUM(CASE WHEN vc_vehicle_no IS NULL OR TRIM(vc_vehicle_no) = '' THEN 1 ELSE 0 END) as missing_wh_vehicle,
+                SUM(CASE WHEN vc_vehicle_no_2 IS NULL OR TRIM(vc_vehicle_no_2) = '' THEN 1 ELSE 0 END) as missing_shop_vehicle
+            FROM serial_no_dailydata
+            WHERE loaded_datetime >= '{start_str}' AND loaded_datetime <= '{end_str}'
+              AND (vc_vehicle_no IS NOT NULL OR vc_vehicle_no_2 IS NOT NULL)
+        """
+        
+        cursor.execute(query)
+        result = cursor.fetchone()
+        return dict(result) if result else {}
+
+@st.cache_data(ttl=300)
+def get_root_cause_patterns(start_date, end_date):
+    """Identify patterns that indicate root causes of issues"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        start_str = start_date.strftime('%Y-%m-%d') if hasattr(start_date, 'strftime') else str(start_date)
+        end_str = end_date.strftime('%Y-%m-%d') if hasattr(end_date, 'strftime') else str(end_date)
+        
+        query = f"""
+            SELECT 
+                vc_shop_code,
+                -- Process Issues
+                SUM(CASE WHEN remarks2 LIKE '%Sold without offloading%' THEN 1 ELSE 0 END) as process_bypass,
+                -- Data Entry Issues
+                SUM(CASE WHEN remarks2 LIKE '%Serial mismatch%' THEN 1 ELSE 0 END) as data_entry_errors,
+                -- Routing Issues
+                SUM(CASE WHEN remarks2 LIKE '%Shop mismatch%' THEN 1 ELSE 0 END) as routing_errors,
+                -- Vehicle Issues
+                SUM(CASE WHEN vc_vehicle_no != vc_vehicle_no_2 
+                    AND vc_vehicle_no IS NOT NULL 
+                    AND vc_vehicle_no_2 IS NOT NULL 
+                    THEN 1 ELSE 0 END) as vehicle_mismatches,
+                -- Total Issues
+                SUM(CASE WHEN remarks2 LIKE '⚠️%' THEN 1 ELSE 0 END) as total_issues
+            FROM serial_no_dailydata
+            WHERE loaded_datetime >= '{start_str}' AND loaded_datetime <= '{end_str}'
+              AND vc_shop_code IS NOT NULL
+            GROUP BY vc_shop_code
+            HAVING SUM(CASE WHEN remarks2 LIKE '⚠️%' THEN 1 ELSE 0 END) > 0
+            ORDER BY total_issues DESC
+            LIMIT 15
+        """
+        
+        cursor.execute(query)
+        return pd.DataFrame(cursor.fetchall())
+
+# ============================================================
+# MAIN DASHBOARD
+# ============================================================
+def main():
+    # Header
+    st.markdown("""
+    <div class="main-header">
+        <h1>📦 Serial Number Supply Chain Funnel</h1>
+        <p>Track item flow from Warehouse → Shop → Customer with drop-off analysis</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Date Selection in Sidebar
+    with st.sidebar:
+        st.markdown("### 📅 Date Range Selection")
+        start_date = st.date_input(
+            "Start Date",
+            value=datetime.today() - timedelta(days=30),
+            max_value=datetime.today()
+        )
+        
+        end_date = st.date_input(
+            "End Date",
+            value=datetime.today(),
+            max_value=datetime.today()
+        )
+        
+        st.markdown("---")
+        st.info(f"📊 Analyzing {(end_date - start_date).days + 1} days of data")
+    
+    # Get data
+    funnel_data = get_funnel_data(start_date, end_date)
+    
+    # Calculate drop-offs
+    loaded = funnel_data['stage1_loaded']
+    offloaded = funnel_data['stage2_offloaded']
+    sold = funnel_data['stage3_sold']
+    
+    dropoff_1_2 = loaded - offloaded  # Not offloaded
+    dropoff_2_3 = offloaded - sold     # Not sold
+    
+    dropoff_1_2_pct = (dropoff_1_2 / loaded * 100) if loaded > 0 else 0
+    dropoff_2_3_pct = (dropoff_2_3 / offloaded * 100) if offloaded > 0 else 0
+    
+    conversion_offload = (offloaded / loaded * 100) if loaded > 0 else 0
+    conversion_sold = (sold / offloaded * 100) if offloaded > 0 else 0
+    conversion_overall = (sold / loaded * 100) if loaded > 0 else 0
+    
+    # Get top issue shops
+    top_shops = get_top_issue_shops(start_date, end_date)
+    
+    # Initialize session state for issue type selection
+    if 'selected_issue_type' not in st.session_state:
+        st.session_state.selected_issue_type = None
+    
+    # ============================================================
+    # TABS
+    # ============================================================
+    tab1, tab2 = st.tabs(["📊 Overview", "🏪 Shop Drill-down"])
+    
+    # ============================================================
+    # TAB 1: OVERVIEW
+    # ============================================================
+    with tab1:
+        # ============================================================
+        # ROW 1: FUNNEL + METRICS + PIE CHART (3 COLUMNS)
+        # ============================================================
+        col1, col2, col3 = st.columns([1.5, 1, 1])
+        
+        with col1:
+            st.markdown("### 📊 Supply Chain Funnel")
+            
+            # Create funnel chart
+            fig = go.Figure()
+            
+            # Funnel data
+            stages = ['🏭 Loaded at WH', '🚚 Offloaded to Shop', '✅ Sold to Customer']
+            values = [loaded, offloaded, sold]
+            colors = ['#667eea', '#f5576c', '#4facfe']
+            
+            fig.add_trace(go.Funnel(
+                y=stages,
+                x=values,
+                textposition="inside",
+                textinfo="value+percent initial",
+                marker=dict(
+                    color=colors,
+                    line=dict(width=2, color='white')
+                ),
+                connector=dict(
+                    line=dict(color="#e0e0e0", width=3, dash="dot")
+                )
+            ))
+            
+            fig.update_layout(
+                height=380,
+                margin=dict(l=20, r=20, t=50, b=20),
+                font=dict(size=13, color='#333'),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                title=dict(
+                    text=f"Overall Conversion: {conversion_overall:.1f}%",
+                    font=dict(size=14, color='#667eea'),
+                    x=0.5,
+                    xanchor='center'
+                )
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            st.markdown("### 📈 Performance Metrics")
+            
+            # Calculate offload rate and determine color
+            offload_rate = (offloaded/loaded*100) if loaded > 0 else 0
+            offload_color = "normal"
+            if offload_rate > 100 or offload_rate < 90:
+                offload_color = "inverse"
+            
+            st.metric(
+                "✅ Offload Rate",
+                f"{offload_rate:.1f}%" if loaded > 0 else "0%",
+                f"{offloaded:,} items",
+                delta_color=offload_color,
+                help=f"Percentage of loaded items that were offloaded to shops. Formula: (Offloaded ÷ Loaded) × 100 = ({offloaded:,} ÷ {loaded:,}) × 100 = {offload_rate:.1f}%"
+            )
+            
+            # Calculate sell-through rate and determine color
+            sell_through = (sold/offloaded*100) if offloaded > 0 else 0
+            sell_through_color = "normal"
+            if sell_through > 100 or sell_through < 90:
+                sell_through_color = "inverse"
+            
+            st.metric(
+                "💰 Sell-through Rate",
+                f"{sell_through:.1f}%" if offloaded > 0 else "0%",
+                f"{sold:,} items",
+                delta_color=sell_through_color,
+                help=f"Percentage of offloaded items that were sold to customers. Formula: (Sold ÷ Offloaded) × 100 = ({sold:,} ÷ {offloaded:,}) × 100 = {sell_through:.1f}%"
+            )
+            
+            st.metric(
+                "🎯 End-to-End",
+                f"{conversion_overall:.1f}%",
+                f"{sold:,} items",
+                help=f"Overall conversion from warehouse to customer. Formula: (Sold ÷ Loaded) × 100 = ({sold:,} ÷ {loaded:,}) × 100 = {conversion_overall:.1f}%"
+            )
+            
+            st.metric(
+                "⚠️ Total Issues",
+                f"{funnel_data['total_issues']:,}",
+                f"{(funnel_data['total_issues']/loaded*100):.1f}% of loaded" if loaded > 0 else "0%",
+                help=f"Total process violations found. Formula: (Total Issues ÷ Loaded) × 100 = ({funnel_data['total_issues']:,} ÷ {loaded:,}) × 100 = {(funnel_data['total_issues']/loaded*100):.1f}%"
+            )
+        
+        with col3:
+            st.markdown("### 📊 Issue Distribution")
+            
+            # By Shop
+            st.markdown("#### By Shop")
+            if not top_shops.empty:
+                # Pie chart of top 5 shops
+                fig_pie_shop = go.Figure()
+                
+                top_5_shops = top_shops.head(5)
+                
+                fig_pie_shop.add_trace(go.Pie(
+                    labels=top_5_shops['vc_shop_code'],
+                    values=top_5_shops['issue_count'],
+                    hole=0.4,
+                    marker=dict(
+                        colors=['#ff4757', '#ff6b81', '#ff7f50', '#ffa502', '#ffb142']
+                    ),
+                    textinfo='label+percent',
+                    textposition='auto'
+                ))
+                
+                fig_pie_shop.update_layout(
+                    height=180,
+                    margin=dict(l=10, r=10, t=10, b=10),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    showlegend=False
+                )
+                
+                st.plotly_chart(fig_pie_shop, use_container_width=True)
+            
+            # By Issue Type
+            st.markdown("#### By Issue Type")
+            if funnel_data['total_issues'] > 0:
+                # Create issue type data with shortened labels
+                issue_types = [
+                    'No Offload',
+                    'Shop Mismatch', 
+                    'Serial Mismatch'
+                ]
+                issue_values = [
+                    funnel_data['sold_without_offload'],
+                    funnel_data['shop_mismatch'],
+                    funnel_data['serial_mismatch']
+                ]
+                
+                fig_pie_issue = go.Figure()
+                
+                fig_pie_issue.add_trace(go.Pie(
+                    labels=issue_types,
+                    values=issue_values,
+                    hole=0.4,
+                    marker=dict(
+                        colors=['#e74c3c', '#f39c12', '#3498db']
+                    ),
+                    textinfo='label+percent',
+                    textposition='auto'
+                ))
+                
+                fig_pie_issue.update_layout(
+                    height=180,
+                    margin=dict(l=10, r=10, t=10, b=10),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    showlegend=False
+                )
+                
+                st.plotly_chart(fig_pie_issue, use_container_width=True, key='issue_type_pie')
+        
+        # Shop Alert Popup (Top Right)
+        if not top_shops.empty:
+            shop_items = []
+            for idx, shop in top_shops.head(3).iterrows():
+                shop_items.append(f"""
+                <div class="shop-item">
+                    <span><strong>{shop['vc_shop_code']}</strong></span>
+                    <span style="background: rgba(255,255,255,0.4); padding: 4px 10px; border-radius: 12px; font-weight: 600;">
+                        {int(shop['issue_count'])} issues
+                    </span>
+                </div>""")
+            
+            shop_list_html = "".join(shop_items)
+            
+            popup_html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+            <style>
+                .shop-alert-popup {{
+                    position: fixed;
+                    top: clamp(10px, 2vh, 20px);
+                    right: clamp(10px, 2vw, 20px);
+                    background: linear-gradient(135deg, #ff4757 0%, #dc3545 100%);
+                    color: white;
+                    padding: clamp(15px, 2.5vw, 25px);
+                    border-radius: 15px;
+                    box-shadow: 0 8px 20px rgba(220, 53, 69, 0.4);
+                    z-index: 10000;
+                    width: clamp(280px, 90vw, 400px);
+                    max-width: 400px;
+                    animation: slideInRight 0.5s ease-out;
+                    font-size: clamp(0.85rem, 1.5vw, 1rem);
+                }}
+                
+                /* Mobile devices */
+                @media (max-width: 480px) {{
+                    .shop-alert-popup {{
+                        top: 10px;
+                        right: 5px;
+                        left: 5px;
+                        width: auto;
+                        max-width: none;
+                        padding: 15px;
+                    }}
+                }}
+                
+                /* Tablets */
+                @media (min-width: 481px) and (max-width: 1024px) {{
+                    .shop-alert-popup {{
+                        top: 15px;
+                        right: 15px;
+                        width: clamp(300px, 40vw, 380px);
+                    }}
+                }}
+                
+                /* Large screens and TVs */
+                @media (min-width: 1920px) {{
+                    .shop-alert-popup {{
+                        top: 30px;
+                        right: 30px;
+                        width: 420px;
+                        padding: 25px 30px;
+                    }}
+                }}
+                
+                @keyframes slideInRight {{
+                    from {{ transform: translateX(400px); opacity: 0; }}
+                    to {{ transform: translateX(0); opacity: 1; }}
+                }}
+                
+                .close-btn {{
+                    position: absolute;
+                    top: 10px;
+                    right: 10px;
+                    background: rgba(255,255,255,0.3);
+                    border: none;
+                    color: white;
+                    font-size: 20px;
+                    cursor: pointer;
+                    width: 30px;
+                    height: 30px;
+                    border-radius: 50%;
+                    line-height: 1;
+                    font-weight: bold;
+                    transition: all 0.3s ease;
+                }}
+                
+                .close-btn:hover {{
+                    background: rgba(255,255,255,0.5);
+                    transform: scale(1.1);
+                }}
+                
+                .shop-alert-title {{
+                    font-size: clamp(1.1rem, 2.5vw, 1.3rem);
+                    font-weight: bold;
+                    margin-bottom: 10px;
+                    padding-right: 30px;
+                    color: #ffffff;
+                    text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+                }}
+                
+                .shop-list {{
+                    margin-top: 10px;
+                    font-size: 1rem;
+                }}
+                
+                .shop-item {{
+                    background: rgba(255,255,255,0.25);
+                    padding: clamp(8px, 1.5vw, 10px) clamp(10px, 2vw, 12px);
+                    margin: 6px 0;
+                    border-radius: 8px;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    font-size: clamp(0.9rem, 1.8vw, 1.05rem);
+                    color: #ffffff;
+                    font-weight: 500;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                }}
+                
+                .shop-item strong {{
+                    font-size: clamp(1rem, 2vw, 1.15rem);
+                    letter-spacing: 0.5px;
+                }}
+            </style>
+            </head>
+            <body>
+            <div class="shop-alert-popup" id="shopAlert">
+                <button class="close-btn" onclick="closePopup()">×</button>
+                <div class="shop-alert-title">🚨 TOP ISSUE SHOPS</div>
+                <div style="font-size: 1rem; margin-bottom: 10px; color: #fff; font-weight: 500;">
+                    Most mismatches from:
+                </div>
+                <div class="shop-list">{shop_list_html}</div>
+                <div style="font-size: 0.85rem; margin-top: 12px; opacity: 0.9; color: #fff;">
+                    Auto-closes in 30s or click × to dismiss
+                </div>
+            </div>
+            
+            <script>
+                function closePopup() {{
+                    document.getElementById('shopAlert').style.display = 'none';
+                }}
+                
+                // Auto-hide after 30 seconds and stop animation
+                setTimeout(function() {{
+                    var popup = document.getElementById('shopAlert');
+                    if (popup) {{
+                        popup.style.animation = 'none';
+                        popup.style.display = 'none';
+                    }}
+                }}, 30000);
+            </script>
+            </body>
+            </html>
+            """
+            
+            components.html(popup_html, height=0, scrolling=False)
+        
+        # Sticky Issue Badge (Bottom Right) with close button
+        badge_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <style>
+            .issue-badge-sticky {{
+                position: fixed;
+                bottom: clamp(10px, 1.5vh, 15px);
+                right: clamp(10px, 2vw, 20px);
+                background: linear-gradient(135deg, #ff4757 0%, #dc3545 100%);
+                color: white;
+                padding: clamp(12px, 2vw, 18px) clamp(18px, 3vw, 25px);
+                border-radius: 15px;
+                box-shadow: 0 8px 20px rgba(220, 53, 69, 0.4);
+                z-index: 9999;
+                min-width: clamp(140px, 20vw, 180px);
+                text-align: center;
+                animation: pulse 2s ease-in-out infinite;
+            }}
+            
+            /* Mobile devices */
+            @media (max-width: 480px) {{
+                .issue-badge-sticky {{
+                    bottom: 10px;
+                    right: 5px;
+                    left: 5px;
+                    width: auto;
+                    min-width: auto;
+                    padding: 12px 18px;
+                }}
+            }}
+            
+            /* Tablets */
+            @media (min-width: 481px) and (max-width: 1024px) {{
+                .issue-badge-sticky {{
+                    bottom: 12px;
+                    right: 15px;
+                    min-width: 160px;
+                }}
+            }}
+            
+            /* Large screens and TVs */
+            @media (min-width: 1920px) {{
+                .issue-badge-sticky {{
+                    bottom: 20px;
+                    right: 30px;
+                    min-width: 200px;
+                    padding: 20px 30px;
+                }}
+            }}
+            
+            @keyframes pulse {{
+                0%, 100% {{ box-shadow: 0 8px 20px rgba(220, 53, 69, 0.4); }}
+                50% {{ box-shadow: 0 8px 30px rgba(220, 53, 69, 0.7); }}
+            }}
+            
+            .issue-label {{
+                font-size: clamp(0.75rem, 1.5vw, 0.85rem);
+                font-weight: 600;
+                margin-bottom: 5px;
+                opacity: 0.95;
+            }}
+            
+            .issue-count {{
+                font-size: clamp(1.5rem, 4vw, 2rem);
+                font-weight: bold;
+                margin: 8px 0;
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+            }}
+            
+            .close-btn-badge {{
+                position: absolute;
+                top: 5px;
+                right: 5px;
+                background: rgba(255,255,255,0.3);
+                border: none;
+                color: white;
+                font-size: 16px;
+                cursor: pointer;
+                width: 24px;
+                height: 24px;
+                border-radius: 50%;
+                line-height: 1;
+                font-weight: bold;
+                transition: all 0.3s ease;
+            }}
+            
+            .close-btn-badge:hover {{
+                background: rgba(255,255,255,0.5);
+                transform: scale(1.1);
+            }}
+        </style>
+        </head>
+        <body>
+        <div class="issue-badge-sticky" id="issueBadge">
+            <button class="close-btn-badge" onclick="closeBadge()">×</button>
+            <div class="issue-label">⚠️ TOTAL ISSUES</div>
+            <div class="issue-count">{funnel_data['total_issues']:,}</div>
+            <div style="font-size: 0.75rem; opacity: 0.9;">Process Violations</div>
+        </div>
+        
+        <script>
+            function closeBadge() {{
+                document.getElementById('issueBadge').style.display = 'none';
+            }}
+            
+            // Stop animations after 30 seconds
+            setTimeout(function() {{
+                var badge = document.getElementById('issueBadge');
+                if (badge) {{
+                    badge.style.animation = 'none';
+                }}
+            }}, 30000);
+        </script>
+        </body>
+        </html>
+        """
+        
+        components.html(badge_html, height=0, scrolling=False)
+        
+        # ============================================================
+        # ROW 2: ISSUE BREAKDOWN + BRAND PERFORMANCE (2 COLUMNS)
+        # ============================================================
+        st.markdown("---")
+        
+        col1, col2 = st.columns([1, 1.5])
+        
+        with col1:
+            st.markdown("### 🚨 Issue Breakdown")
+            
+            # Calculate percentages
+            sold_wo_offload_pct = (funnel_data['sold_without_offload']/funnel_data['total_issues']*100) if funnel_data['total_issues'] > 0 else 0
+            shop_mismatch_pct = (funnel_data['shop_mismatch']/funnel_data['total_issues']*100) if funnel_data['total_issues'] > 0 else 0
+            serial_mismatch_pct = (funnel_data['serial_mismatch']/funnel_data['total_issues']*100) if funnel_data['total_issues'] > 0 else 0
+            
+            st.metric(
+                "🚫 Sold Without Offloading",
+                f"{funnel_data['sold_without_offload']:,}",
+                f"{sold_wo_offload_pct:.1f}% of total issues",
+                help=f"Items sold to customers without being offloaded to shop first. This is a process violation. Formula: (Sold Without Offload ÷ Total Issues) × 100 = ({funnel_data['sold_without_offload']:,} ÷ {funnel_data['total_issues']:,}) × 100 = {sold_wo_offload_pct:.1f}%"
+            )
+            
+            st.metric(
+                "🏪 Shop Mismatch",
+                f"{funnel_data['shop_mismatch']:,}",
+                f"{shop_mismatch_pct:.1f}% of total issues",
+                help=f"Items offloaded to one shop but sold by a different shop. Formula: (Shop Mismatch ÷ Total Issues) × 100 = ({funnel_data['shop_mismatch']:,} ÷ {funnel_data['total_issues']:,}) × 100 = {shop_mismatch_pct:.1f}%"
+            )
+            
+            st.metric(
+                "🔢 Serial Number Mismatch",
+                f"{funnel_data['serial_mismatch']:,}",
+                f"{serial_mismatch_pct:.1f}% of total issues",
+                help=f"Serial number inconsistencies across warehouse, shop, and sales records. Formula: (Serial Mismatch ÷ Total Issues) × 100 = ({funnel_data['serial_mismatch']:,} ÷ {funnel_data['total_issues']:,}) × 100 = {serial_mismatch_pct:.1f}%"
+            )
+        
+        with col2:
+            st.markdown("### 🏷️ Brand Performance")
+            
+            brand_df = get_brand_funnel(start_date, end_date)
+            
+            if not brand_df.empty:
+                # Calculate conversion rates
+                brand_df['offload_rate'] = (brand_df['offloaded'] / brand_df['loaded'] * 100).round(1)
+                brand_df['sell_rate'] = (brand_df['sold'] / brand_df['offloaded'] * 100).fillna(0).round(1)
+                brand_df['overall_conversion'] = (brand_df['sold'] / brand_df['loaded'] * 100).round(1)
+                
+                # Top 10 brands
+                top_brands = brand_df.head(10)
+                
+                # Create animated funnel visualization
+                fig_brand = go.Figure()
+                
+                # Stage 1: Loaded (Blue)
+                fig_brand.add_trace(go.Bar(
+                    name='Loaded',
+                    x=top_brands['brand'],
+                    y=top_brands['loaded'],
+                    marker=dict(color='#667eea', line=dict(color='white', width=1)),
+                    text=top_brands['loaded'],
+                    textposition='auto',
+                    hovertemplate='<b>%{x}</b><br>Loaded: %{y:,}<extra></extra>'
+                ))
+                
+                # Stage 2: Offloaded (Orange)
+                fig_brand.add_trace(go.Bar(
+                    name='Offloaded',
+                    x=top_brands['brand'],
+                    y=top_brands['offloaded'],
+                    marker=dict(color='#f5576c', line=dict(color='white', width=1)),
+                    text=top_brands['offloaded'],
+                    textposition='auto',
+                    hovertemplate='<b>%{x}</b><br>Offloaded: %{y:,}<extra></extra>'
+                ))
+                
+                # Stage 3: Sold (Green)
+                fig_brand.add_trace(go.Bar(
+                    name='Sold',
+                    x=top_brands['brand'],
+                    y=top_brands['sold'],
+                    marker=dict(color='#4facfe', line=dict(color='white', width=1)),
+                    text=top_brands['sold'],
+                    textposition='auto',
+                    hovertemplate='<b>%{x}</b><br>Sold: %{y:,}<extra></extra>'
+                ))
+                
+                fig_brand.update_layout(
+                    barmode='group',
+                    height=380,
+                    xaxis=dict(title="Brand", tickangle=-45, tickfont=dict(size=10)),
+                    yaxis=dict(title="Count"),
+                    margin=dict(l=40, r=20, t=40, b=100),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(250,250,250,0.5)',
+                    legend=dict(orientation="h", y=1.02, x=0.5, xanchor="center")
+                )
+                
+                st.plotly_chart(fig_brand, use_container_width=True)
+            else:
+                st.info("No brand data available.")
+    
+    # ============================================================
+    # TAB 2: SHOP DRILL-DOWN
+    # ============================================================
+    with tab2:
+        # Sticky filter bar at top
+        filter_container = st.container()
+        
+        with filter_container:
+            # Check if user clicked on issue type pie chart
+            if 'selected_issue_type' in st.session_state and st.session_state.selected_issue_type:
+                selected_issue_display = st.session_state.selected_issue_type
+                
+                # Add custom CSS for sticky filter bar
+                st.markdown("""
+                <style>
+                    .filter-sticky-bar {
+                        position: sticky;
+                        top: 0;
+                        z-index: 999;
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        padding: 15px 20px;
+                        border-radius: 10px;
+                        margin-bottom: 20px;
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    }
+                    .filter-sticky-bar h3 {
+                        color: white;
+                        margin: 0 0 10px 0;
+                        font-size: 1.3rem;
+                    }
+                </style>
+                """, unsafe_allow_html=True)
+                
+                st.markdown('<div class="filter-sticky-bar">', unsafe_allow_html=True)
+                st.markdown(f"### 🏪 Shop Analysis - Filtered by: **{selected_issue_display}**")
+                
+                # Filter controls in columns
+                col_a, col_b, col_c = st.columns([2, 2, 1])
+                with col_a:
+                    st.info(f"📌 Active Filter: **{selected_issue_display}**")
+                with col_b:
+                    pass  # Spacer
+                with col_c:
+                    if st.button("🔄 Clear", use_container_width=True, key="clear_filter_top"):
+                        st.session_state.selected_issue_type = None
+                        st.rerun()
+                
+                st.markdown('</div>', unsafe_allow_html=True)
+                
+                # Get filtered shop data
+                filtered_top_shops = get_top_issue_shops(start_date, end_date, selected_issue_display)
+            else:
+                st.markdown("### 🏪 Top Issue Shops - Detailed Analysis")
+                selected_issue_display = None
+                filtered_top_shops = top_shops
+            
+            # Two filters side by side with sticky positioning
+            st.markdown("""
+            <style>
+                .element-container:has(> div.row-widget.stSelectbox) {
+                    position: sticky;
+                    top: 80px;
+                    z-index: 998;
+                    background: white;
+                    padding: 15px 0;
+                    margin-bottom: 10px;
+                    border-bottom: 2px solid #f0f0f0;
+                }
+            </style>
+            """, unsafe_allow_html=True)
+            
+            # Initialize session state for filters to prevent tab switching
+            if 'selected_shop_filter' not in st.session_state:
+                st.session_state.selected_shop_filter = 'All'
+            if 'selected_issue_filter' not in st.session_state:
+                st.session_state.selected_issue_filter = 'All Issues'
+            
+            col_filter1, col_filter2 = st.columns(2)
+            
+            with col_filter1:
+                # Shop selector for drill-down with 'All' option
+                shop_options = ['All'] + filtered_top_shops['vc_shop_code'].tolist()
+                
+                # Get default index
+                try:
+                    shop_default_idx = shop_options.index(st.session_state.selected_shop_filter)
+                except ValueError:
+                    shop_default_idx = 0
+                    st.session_state.selected_shop_filter = 'All'
+                
+                selected_shop = st.selectbox(
+                    "🏪 Select Shop:",
+                    options=shop_options,
+                    index=shop_default_idx,
+                    key='shop_selector_widget',
+                    help="Choose a specific shop or 'All' to view all shops"
+                )
+                
+                # Update session state
+                if selected_shop != st.session_state.selected_shop_filter:
+                    st.session_state.selected_shop_filter = selected_shop
+            
+            with col_filter2:
+                # Issue type filter
+                issue_options = [
+                    'All Issues',
+                    'No Offload',
+                    'Shop Mismatch',
+                    'Serial Mismatch'
+                ]
+                
+                # Set default based on session state or selected_issue_display
+                default_idx = 0
+                if selected_issue_display:
+                    if selected_issue_display == 'Sold without offloading':
+                        default_idx = 1
+                    elif selected_issue_display == 'Shop mismatch':
+                        default_idx = 2
+                    elif selected_issue_display == 'Serial mismatch':
+                        default_idx = 3
+                else:
+                    try:
+                        default_idx = issue_options.index(st.session_state.selected_issue_filter)
+                    except ValueError:
+                        default_idx = 0
+                
+                selected_issue_filter = st.selectbox(
+                    "⚠️ Filter by Issue Type:",
+                    options=issue_options,
+                    index=default_idx,
+                    key='issue_type_selector_widget',
+                    help="Filter data by specific issue type"
+                )
+                
+                # Update session state
+                if selected_issue_filter != st.session_state.selected_issue_filter:
+                    st.session_state.selected_issue_filter = selected_issue_filter
+                
+                # Map short names to full names
+                issue_filter_mapping = {
+                    'All Issues': None,
+                    'No Offload': 'Sold without offloading',
+                    'Shop Mismatch': 'Shop mismatch',
+                    'Serial Mismatch': 'Serial mismatch'
+                }
+                
+                # Update filtered data based on dropdown selection
+                selected_issue_display = issue_filter_mapping[selected_issue_filter]
+                if selected_issue_filter != 'All Issues':
+                    filtered_top_shops = get_top_issue_shops(start_date, end_date, selected_issue_display)
+        
+        if not filtered_top_shops.empty:
+            # Create dynamic bar chart based on shop selection
+            fig_shops = go.Figure()
+            
+            if selected_shop == 'All':
+                # Show shop-wise breakdown when 'All' is selected
+                display_shops = filtered_top_shops
+                shop_title = "All Shops"
+                
+                fig_shops.add_trace(go.Bar(
+                    x=display_shops['vc_shop_code'],
+                    y=display_shops['issue_count'],
+                    text=display_shops['issue_count'],
+                    textposition='auto',
+                    marker=dict(
+                        color=display_shops['issue_count'],
+                        colorscale='Reds',
+                        line=dict(color='white', width=2)
+                    ),
+                    hovertemplate='<b>%{x}</b><br>Total Issues: %{y}<extra></extra>'
+                ))
+                
+                chart_title = f"Issue Count by Shop"
+                xlabel = "Shop Code"
+            else:
+                # Show brand-wise breakdown when specific shop is selected
+                brand_data = get_shop_issues_by_brand(start_date, end_date, selected_shop, selected_issue_display)
+                shop_title = selected_shop
+                
+                if not brand_data.empty:
+                    fig_shops.add_trace(go.Bar(
+                        x=brand_data['brand'],
+                        y=brand_data['issue_count'],
+                        text=brand_data['issue_count'],
+                        textposition='auto',
+                        marker=dict(
+                            color=brand_data['issue_count'],
+                            colorscale='Reds',
+                            line=dict(color='white', width=2)
+                        ),
+                        hovertemplate='<b>%{x}</b><br>Issues: %{y}<extra></extra>'
+                    ))
+                    
+                    chart_title = f"Issue Count by Brand - {shop_title}"
+                    xlabel = "Brand"
+                else:
+                    st.info(f"No brand data available for {selected_shop}")
+                    chart_title = f"Issue Count - {shop_title}"
+                    xlabel = "Brand"
+            
+            if selected_issue_display:
+                chart_title += f" ({selected_issue_display})"
+            
+            fig_shops.update_layout(
+                height=320,
+                margin=dict(l=30, r=30, t=40, b=70),
+                xaxis=dict(title=xlabel, tickangle=-45),
+                yaxis=dict(title="Issue Count"),
+                title=dict(text=chart_title, x=0.5, xanchor='center'),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(250,250,250,0.5)',
+                showlegend=False
+            )
+            
+            st.plotly_chart(fig_shops, use_container_width=True, key='shop_issues_detailed')
+            
+            # Show detailed breakdown by brand & date
+            if selected_shop != 'All':
+                subtitle = f"#### 📊 {selected_shop} - Issues by Brand & Date"
+                if selected_issue_display:
+                    subtitle += f" ({selected_issue_display})"
+                st.markdown(subtitle)
+                
+                shop_details = get_shop_issues_by_brand_date(start_date, end_date, selected_shop, selected_issue_display)
+                
+                if not shop_details.empty:
+                    # Create line chart showing issues over time by brand
+                    fig_timeline = go.Figure()
+                    
+                    # Get unique brands
+                    brands = shop_details['brand'].unique()
+                    
+                    for brand in brands[:10]:  # Top 10 brands
+                        brand_data = shop_details[shop_details['brand'] == brand]
+                        fig_timeline.add_trace(go.Scatter(
+                            x=brand_data['load_date'],
+                            y=brand_data['issue_count'],
+                            mode='lines+markers',
+                            name=brand,
+                            line=dict(width=2),
+                            marker=dict(size=8),
+                            hovertemplate=f'<b>{brand}</b><br>Date: %{{x}}<br>Issues: %{{y}}<extra></extra>',
+                            customdata=brand_data['load_date']  # Store date for click events
+                        ))
+                    
+                    fig_timeline.update_layout(
+                        height=400,
+                        margin=dict(l=30, r=30, t=30, b=80),
+                        xaxis=dict(title="Date (Click on a point to see details)", tickangle=-45),
+                        yaxis=dict(title="Issue Count"),
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(250,250,250,0.5)',
+                        hovermode='x unified',
+                        clickmode='event',
+                        legend=dict(
+                            orientation="h",
+                            yanchor="bottom",
+                            y=-0.4,
+                            xanchor="center",
+                            x=0.5
+                        )
+                    )
+                    
+                    # Display chart with click events
+                    clicked_point = st.plotly_chart(
+                        fig_timeline, 
+                        use_container_width=True, 
+                        key=f'timeline_{selected_shop}',
+                        on_select="rerun"
+                    )
+                    
+                    # Handle click events
+                    if clicked_point and clicked_point.selection and clicked_point.selection.points:
+                        # Get the clicked date
+                        clicked_date = clicked_point.selection.points[0]['x']
+                        
+                        # Convert to date object if it's a string
+                        if isinstance(clicked_date, str):
+                            clicked_date = datetime.strptime(clicked_date.split('T')[0], '%Y-%m-%d').date()
+                        
+                        # Get detailed records for clicked date
+                        date_details = get_issue_details_by_date(
+                            start_date, end_date, selected_shop, clicked_date, selected_issue_display
+                        )
+                        
+                        if not date_details.empty:
+                            # Display metric for clicked date
+                            col_metric1, col_metric2 = st.columns([2, 1])
+                            with col_metric2:
+                                st.metric(
+                                    "Total Issues",
+                                    f"{len(date_details):,}",
+                                    f"on {clicked_date.strftime('%Y-%m-%d') if hasattr(clicked_date, 'strftime') else str(clicked_date)}"
+                                )
+                            
+                            st.markdown(f"##### 📋 Issue Details for {clicked_date.strftime('%Y-%m-%d') if hasattr(clicked_date, 'strftime') else str(clicked_date)}")
+                            
+                            # Display the detailed records
+                            display_cols = ['loaded_datetime', 'brand', 'group', 'subgroup', 
+                                           'serial_no', 'vc_serail_no', 'shop_serail_no',
+                                           'vc_shop_code', 'shop_sold', 'vc_vehicle_no', 
+                                           'vc_vehicle_no_2', 'remarks2']
+                            
+                            st.dataframe(
+                                date_details[display_cols],
+                                use_container_width=True,
+                                hide_index=True,
+                                column_config={
+                                    'loaded_datetime': st.column_config.DatetimeColumn('Date & Time', format="YYYY-MM-DD HH:mm"),
+                                    'brand': st.column_config.TextColumn('Brand', width='small'),
+                                    'group': st.column_config.TextColumn('Group', width='small'),
+                                    'subgroup': st.column_config.TextColumn('Subgroup', width='small'),
+                                    'serial_no': st.column_config.TextColumn('WH Serial', width='medium'),
+                                    'vc_serail_no': st.column_config.TextColumn('Shop Serial', width='medium'),
+                                    'shop_serail_no': st.column_config.TextColumn('Sold Serial', width='medium'),
+                                    'vc_shop_code': st.column_config.TextColumn('Offload Shop', width='small'),
+                                    'shop_sold': st.column_config.TextColumn('Sold Shop', width='small'),
+                                    'vc_vehicle_no': st.column_config.TextColumn('WH Vehicle', width='small'),
+                                    'vc_vehicle_no_2': st.column_config.TextColumn('Shop Vehicle', width='small'),
+                                    'remarks2': st.column_config.TextColumn('Issues', width='large')
+                                }
+                            )
+                            
+                            # Download button for date-specific data
+                            csv_date = date_details.to_csv(index=False)
+                            st.download_button(
+                                label=f"📥 Download Issues for {clicked_date.strftime('%Y-%m-%d') if hasattr(clicked_date, 'strftime') else str(clicked_date)}",
+                                data=csv_date,
+                                file_name=f"issues_{selected_shop}_{clicked_date.strftime('%Y-%m-%d') if hasattr(clicked_date, 'strftime') else str(clicked_date)}.csv",
+                                mime="text/csv",
+                                key=f"download_date_{selected_shop}_{clicked_date}"
+                            )
+                        else:
+                            st.info(f"No issue details found for {clicked_date}")
+                    else:
+                        st.info("💡 Click on any point in the timeline chart above to see detailed records for that date")
+                else:
+                    st.info(f"No detailed data available for {selected_shop}")
+            
+            # ============================================================
+            # VEHICLE MISMATCH ANALYSIS
+            # ============================================================
+            st.markdown("---")
+            st.markdown("### 🚛 Vehicle Tracking & Transit Analysis")
+            
+            # Get transit accuracy metrics
+            transit_metrics = get_transit_accuracy_metrics(start_date, end_date)
+            
+            if transit_metrics:
+                col_t1, col_t2, col_t3, col_t4 = st.columns(4)
+                
+                total_tracked = transit_metrics.get('total_with_vehicle_data', 0)
+                vehicle_match = transit_metrics.get('vehicle_match', 0)
+                vehicle_mismatch = transit_metrics.get('vehicle_mismatch', 0)
+                
+                match_rate = (vehicle_match / total_tracked * 100) if total_tracked > 0 else 0
+                mismatch_rate = (vehicle_mismatch / total_tracked * 100) if total_tracked > 0 else 0
+                
+                with col_t1:
+                    st.metric(
+                        "🎯 Vehicle Match Rate",
+                        f"{match_rate:.1f}%",
+                        f"{vehicle_match:,} items",
+                        delta_color="normal",
+                        help="Percentage of items where warehouse vehicle matches shop vehicle (same vehicle throughout)"
+                    )
+                
+                with col_t2:
+                    mismatch_color = "inverse" if mismatch_rate > 10 else "normal"
+                    st.metric(
+                        "⚠️ Vehicle Mismatch Rate",
+                        f"{mismatch_rate:.1f}%",
+                        f"{vehicle_mismatch:,} items",
+                        delta_color=mismatch_color,
+                        help="Items transferred between vehicles during transit (potential cross-loading or data errors)"
+                    )
+                
+                with col_t3:
+                    missing_wh = transit_metrics.get('missing_wh_vehicle', 0)
+                    st.metric(
+                        "📦 Missing WH Vehicle",
+                        f"{missing_wh:,}",
+                        f"{(missing_wh/total_tracked*100):.1f}%" if total_tracked > 0 else "0%",
+                        delta_color="inverse" if missing_wh > 0 else "normal",
+                        help="Items without warehouse departure vehicle number (data entry gap)"
+                    )
+                
+                with col_t4:
+                    missing_shop = transit_metrics.get('missing_shop_vehicle', 0)
+                    st.metric(
+                        "🏪 Missing Shop Vehicle",
+                        f"{missing_shop:,}",
+                        f"{(missing_shop/total_tracked*100):.1f}%" if total_tracked > 0 else "0%",
+                        delta_color="inverse" if missing_shop > 0 else "normal",
+                        help="Items without shop arrival vehicle number (offload not recorded)"
+                    )
+            
+            # Vehicle mismatch details
+            if selected_shop != 'All':
+                st.markdown(f"#### 🚛 Vehicle Mismatches - {selected_shop}")
+                vehicle_mismatches = get_vehicle_mismatches(start_date, end_date, selected_shop)
+                
+                if not vehicle_mismatches.empty:
+                    st.warning(f"⚠️ Found {len(vehicle_mismatches):,} vehicle mismatches for {selected_shop}")
+                    
+                    # Show sample of mismatches
+                    st.dataframe(
+                        vehicle_mismatches[['loaded_datetime', 'brand', 'serial_no', 
+                                          'warehouse_vehicle', 'shop_vehicle', 'remarks2']].head(50),
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            'loaded_datetime': st.column_config.DateColumn('Date', format="YYYY-MM-DD"),
+                            'warehouse_vehicle': st.column_config.TextColumn('WH Vehicle', width='medium'),
+                            'shop_vehicle': st.column_config.TextColumn('Shop Vehicle', width='medium'),
+                            'remarks2': st.column_config.TextColumn('Issues', width='large')
+                        }
+                    )
+                    
+                    # Download vehicle mismatches
+                    csv_vehicle = vehicle_mismatches.to_csv(index=False)
+                    st.download_button(
+                        label="📥 Download Vehicle Mismatches",
+                        data=csv_vehicle,
+                        file_name=f"vehicle_mismatches_{selected_shop}_{start_date}_{end_date}.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.success(f"✅ No vehicle mismatches found for {selected_shop}")
+            else:
+                # Show vehicle mismatch summary for all shops
+                st.markdown("#### 🚛 Vehicle Mismatches by Shop")
+                vehicle_summary = get_vehicle_mismatch_summary(start_date, end_date)
+                
+                if not vehicle_summary.empty:
+                    # Create bar chart
+                    fig_vehicle = go.Figure()
+                    
+                    fig_vehicle.add_trace(go.Bar(
+                        x=vehicle_summary['vc_shop_code'],
+                        y=vehicle_summary['vehicle_mismatch_count'],
+                        text=vehicle_summary['vehicle_mismatch_count'],
+                        textposition='auto',
+                        marker=dict(
+                            color=vehicle_summary['vehicle_mismatch_count'],
+                            colorscale='OrRd',
+                            line=dict(color='white', width=2)
+                        ),
+                        hovertemplate='<b>%{x}</b><br>Mismatches: %{y}<br>' +
+                                    'WH Vehicles: ' + vehicle_summary['unique_wh_vehicles'].astype(str) + '<br>' +
+                                    'Shop Vehicles: ' + vehicle_summary['unique_shop_vehicles'].astype(str) + '<extra></extra>'
+                    ))
+                    
+                    fig_vehicle.update_layout(
+                        height=350,
+                        margin=dict(l=30, r=30, t=40, b=70),
+                        xaxis=dict(title="Shop Code", tickangle=-45),
+                        yaxis=dict(title="Vehicle Mismatch Count"),
+                        title=dict(text="Vehicle Mismatches by Shop", x=0.5, xanchor='center'),
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(250,250,250,0.5)',
+                        showlegend=False
+                    )
+                    
+                    st.plotly_chart(fig_vehicle, use_container_width=True, key='vehicle_summary_chart')
+                    
+                    # Show table
+                    st.dataframe(
+                        vehicle_summary,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            'vc_shop_code': st.column_config.TextColumn('Shop', width='small'),
+                            'vehicle_mismatch_count': st.column_config.NumberColumn('Mismatches', format='%d'),
+                            'unique_wh_vehicles': st.column_config.NumberColumn('WH Vehicles', format='%d'),
+                            'unique_shop_vehicles': st.column_config.NumberColumn('Shop Vehicles', format='%d'),
+                            'affected_brands': st.column_config.NumberColumn('Brands', format='%d')
+                        }
+                    )
+                else:
+                    st.success("✅ No vehicle mismatches found")
+            
+            # ============================================================
+            # ROOT CAUSE PATTERN ANALYSIS
+            # ============================================================
+            st.markdown("---")
+            st.markdown("### 🔍 Root Cause Analysis - Issue Pattern Matrix")
+            st.info("💡 This analysis helps identify the PRIMARY cause of issues for each shop (process, data entry, routing, or vehicle problems)")
+            
+            root_cause_df = get_root_cause_patterns(start_date, end_date)
+            
+            if not root_cause_df.empty:
+                # Calculate percentages for heatmap
+                root_cause_df['process_pct'] = (root_cause_df['process_bypass'] / root_cause_df['total_issues'] * 100).round(1)
+                root_cause_df['data_pct'] = (root_cause_df['data_entry_errors'] / root_cause_df['total_issues'] * 100).round(1)
+                root_cause_df['routing_pct'] = (root_cause_df['routing_errors'] / root_cause_df['total_issues'] * 100).round(1)
+                root_cause_df['vehicle_pct'] = (root_cause_df['vehicle_mismatches'] / root_cause_df['total_issues'] * 100).round(1)
+                
+                # Identify primary issue for each shop
+                def get_primary_issue(row):
+                    issues = {
+                        'Process Bypass': row['process_pct'],
+                        'Data Entry': row['data_pct'],
+                        'Routing': row['routing_pct'],
+                        'Vehicle': row['vehicle_pct']
+                    }
+                    return max(issues, key=issues.get)
+                
+                root_cause_df['primary_issue'] = root_cause_df.apply(get_primary_issue, axis=1)
+                
+                # Create heatmap
+                col_rc1, col_rc2 = st.columns([2, 1])
+                
+                with col_rc1:
+                    fig_heatmap = go.Figure()
+                    
+                    # Prepare data for heatmap
+                    shops = root_cause_df['vc_shop_code'].tolist()
+                    categories = ['Process\nBypass', 'Data\nEntry', 'Routing\nErrors', 'Vehicle\nIssues']
+                    
+                    heatmap_data = [
+                        root_cause_df['process_pct'].tolist(),
+                        root_cause_df['data_pct'].tolist(),
+                        root_cause_df['routing_pct'].tolist(),
+                        root_cause_df['vehicle_pct'].tolist()
+                    ]
+                    
+                    fig_heatmap.add_trace(go.Heatmap(
+                        z=heatmap_data,
+                        x=shops,
+                        y=categories,
+                        colorscale='RdYlGn_r',
+                        text=heatmap_data,
+                        texttemplate='%{text:.1f}%',
+                        textfont={"size": 10},
+                        colorbar=dict(title="% of Total<br>Issues")
+                    ))
+                    
+                    fig_heatmap.update_layout(
+                        height=400,
+                        margin=dict(l=30, r=30, t=40, b=100),
+                        xaxis=dict(title="Shop Code", tickangle=-45),
+                        yaxis=dict(title="Issue Category"),
+                        title=dict(text="Issue Distribution by Root Cause (%)", x=0.5, xanchor='center'),
+                        paper_bgcolor='rgba(0,0,0,0)'
+                    )
+                    
+                    st.plotly_chart(fig_heatmap, use_container_width=True, key='root_cause_heatmap')
+                
+                with col_rc2:
+                    st.markdown("#### 🎯 Primary Issue Summary")
+                    
+                    # Count primary issues
+                    primary_counts = root_cause_df['primary_issue'].value_counts()
+                    
+                    # Pie chart
+                    fig_primary = go.Figure()
+                    
+                    colors_primary = {
+                        'Process Bypass': '#e74c3c',
+                        'Data Entry': '#f39c12',
+                        'Routing': '#3498db',
+                        'Vehicle': '#9b59b6'
+                    }
+                    
+                    fig_primary.add_trace(go.Pie(
+                        labels=primary_counts.index,
+                        values=primary_counts.values,
+                        hole=0.4,
+                        marker=dict(colors=[colors_primary.get(x, '#95a5a6') for x in primary_counts.index]),
+                        textinfo='label+value',
+                        textposition='auto'
+                    ))
+                    
+                    fig_primary.update_layout(
+                        height=300,
+                        margin=dict(l=10, r=10, t=30, b=10),
+                        title=dict(text="Shops by Primary Issue", x=0.5, xanchor='center'),
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        showlegend=False
+                    )
+                    
+                    st.plotly_chart(fig_primary, use_container_width=True, key='primary_issue_pie')
+                    
+                    # Recommendations with download buttons
+                    st.markdown("#### 📋 Recommendations")
+                    for issue_type, count in primary_counts.items():
+                        # Filter shops by primary issue
+                        shops_with_issue = root_cause_df[root_cause_df['primary_issue'] == issue_type].copy()
+                        shops_with_issue['recommendation'] = ''
+                        
+                        col_rec1, col_rec2 = st.columns([3, 1])
+                        
+                        with col_rec1:
+                            if issue_type == 'Process Bypass':
+                                st.error(f"**{count} shops:** Enforce offload process before sales")
+                                shops_with_issue['recommendation'] = 'Enforce offload process before sales'
+                            elif issue_type == 'Data Entry':
+                                st.warning(f"**{count} shops:** Improve serial number data entry training")
+                                shops_with_issue['recommendation'] = 'Improve serial number data entry training'
+                            elif issue_type == 'Routing':
+                                st.info(f"**{count} shops:** Review and optimize delivery routes")
+                                shops_with_issue['recommendation'] = 'Review and optimize delivery routes'
+                            elif issue_type == 'Vehicle':
+                                st.warning(f"**{count} shops:** Audit vehicle tracking & cross-loading")
+                                shops_with_issue['recommendation'] = 'Audit vehicle tracking & cross-loading'
+                        
+                        with col_rec2:
+                            if not shops_with_issue.empty:
+                                # Prepare download data
+                                download_df = shops_with_issue[[
+                                    'vc_shop_code', 'total_issues', 'process_bypass', 
+                                    'data_entry_errors', 'routing_errors', 'vehicle_mismatches',
+                                    'recommendation'
+                                ]].copy()
+                                download_df.columns = ['Shop Code', 'Total Issues', 'Process Bypass', 
+                                                      'Data Entry Errors', 'Routing Errors', 'Vehicle Mismatches',
+                                                      'Action Required']
+                                
+                                csv_recommendation = download_df.to_csv(index=False)
+                                st.download_button(
+                                    label="📥 Download",
+                                    data=csv_recommendation,
+                                    file_name=f"action_plan_{issue_type.replace(' ', '_').lower()}_{start_date}_{end_date}.csv",
+                                    mime="text/csv",
+                                    key=f"download_rec_{issue_type}",
+                                    use_container_width=True
+                                )
+                
+                # Detailed table
+                st.markdown("#### 📊 Detailed Root Cause Breakdown")
+                display_df = root_cause_df[[
+                    'vc_shop_code', 'total_issues', 'primary_issue',
+                    'process_bypass', 'data_entry_errors', 'routing_errors', 'vehicle_mismatches'
+                ]].copy()
+                
+                st.dataframe(
+                    display_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        'vc_shop_code': st.column_config.TextColumn('Shop', width='small'),
+                        'total_issues': st.column_config.NumberColumn('Total Issues', format='%d'),
+                        'primary_issue': st.column_config.TextColumn('Primary Cause', width='medium'),
+                        'process_bypass': st.column_config.NumberColumn('Process', format='%d'),
+                        'data_entry_errors': st.column_config.NumberColumn('Data Entry', format='%d'),
+                        'routing_errors': st.column_config.NumberColumn('Routing', format='%d'),
+                        'vehicle_mismatches': st.column_config.NumberColumn('Vehicle', format='%d')
+                    }
+                )
+                
+                # Download root cause analysis
+                csv_root = root_cause_df.to_csv(index=False)
+                st.download_button(
+                    label="📥 Download Root Cause Analysis",
+                    data=csv_root,
+                    file_name=f"root_cause_analysis_{start_date}_{end_date}.csv",
+                    mime="text/csv",
+                    key="download_root_cause"
+                )
+            else:
+                st.success("✅ No issues found for root cause analysis")
+        else:
+            st.info("No shop-specific issues found in the selected date range.")
+    
+    # ============================================================
+    # ISSUE DETAILS
+    # ============================================================
+    st.markdown("### 🔍 Issue Details")
+    
+    issue_filter = st.selectbox(
+        "Filter by issue type:",
+        ['All Issues', 'Sold without offloading', 'Shop mismatch', 'Serial mismatch']
+    )
+    
+    issue_type_map = {
+        'All Issues': None,
+        'Sold without offloading': 'Sold without offloading',
+        'Shop mismatch': 'Shop mismatch',
+        'Serial mismatch': 'Serial mismatch'
+    }
+    
+    issue_df = get_issue_details(start_date, end_date, issue_type_map[issue_filter])
+    
+    if not issue_df.empty:
+        st.markdown(f"**Found {len(issue_df):,} issues** (showing all records)")
+        
+        # Display issues
+        display_cols = ['loaded_datetime', 'brand', 'group', 'serial_no', 'vc_serail_no', 
+                       'shop_serail_no', 'vc_shop_code', 'shop_sold', 'remarks2']
+        
+        st.dataframe(
+            issue_df[display_cols],
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                'loaded_datetime': st.column_config.DateColumn('Date', format="YYYY-MM-DD"),
+                'remarks2': st.column_config.TextColumn('Issue', width='large')
+            }
+        )
+        
+        # Download button
+        csv = issue_df.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Full Issue Report",
+            data=csv,
+            file_name=f"serial_issues_{start_date}_{end_date}.csv",
+            mime="text/csv"
+        )
+    else:
+        st.success("✅ No issues found for the selected period!")
+
+if __name__ == "__main__":
+    main()
