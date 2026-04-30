@@ -707,11 +707,15 @@ def _build_live_scan_agg_cte(group_by_columns: list[str], extra_where: str = "")
           AND UPPER(TRIM(COALESCE(m.store_code, ''))) = ANY(%(shops)s)
           AND NULLIF(TRIM(COALESCE(m.invno::text, '')), '') IS NOT NULL
         GROUP BY UPPER(TRIM(m.store_code))
-    )
-            FROM invoice_union iu
-            INNER JOIN consumable_tills ct ON ct.shop_code = iu.shop_code AND ct.till_no = iu.till_no
-            WHERE iu.src_priority = 1{extra_and_sql_qualified}
-        ) consumable_matches
+    ),
+    consumable_agg AS (
+        SELECT
+            {group_select},
+            COUNT(*) FILTER (WHERE iu.src_priority = 1) AS consumable_till_nob,
+            SUM(COALESCE(iu.amt, 0)) FILTER (WHERE iu.src_priority = 1) AS consumable_nob_ghs
+        FROM invoice_union iu
+        INNER JOIN consumable_tills ct ON ct.shop_code = iu.shop_code AND ct.till_no = iu.till_no
+        WHERE iu.src_priority = 1{extra_and_sql_qualified}
         GROUP BY {group_by}
     ),
     scan_agg AS (
