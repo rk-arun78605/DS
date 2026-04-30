@@ -697,36 +697,17 @@ def _build_live_scan_agg_cte(group_by_columns: list[str], extra_where: str = "")
         WHERE NULLIF(TRIM(COALESCE(m.invno::text, '')), '') IS NOT NULL
           AND m.invdate::date BETWEEN %(s)s AND %(e)s
     ),
-    deduped_scan AS (
-        SELECT bill_date, shop_code, invno, amt, till_no
-        FROM (
-            SELECT
-                bill_date, shop_code, invno, amt, till_no,
-                ROW_NUMBER() OVER (PARTITION BY bill_date, shop_code, invno ORDER BY src_priority) AS rn
-            FROM invoice_union
-        ) d
-        WHERE rn = 1
-    ),
-    raw_invoice_agg AS (
-        -- scan_nob: raw COUNT from invoices table only (src_priority=1), no dedup with invoices_manager
+    manager_agg AS (
+        -- Count distinct invoice numbers handed over to manager per shop within date range
         SELECT
-            {group_select},
-            COUNT(*) AS scan_nob,
-            SUM(amt)  AS scanned_nob_ghs
-        FROM invoice_union
-        WHERE src_priority = 1{extra_and_sql}
-        GROUP BY {group_by}
-    ),
-    consumable_agg AS (
-        -- consumable_till_nob: COUNT(invno) from invoices table ONLY for rows matching defined consumable tills
-        SELECT
-            {group_select},
-            COUNT(*) AS consumable_till_nob,
-            SUM(amt)  AS consumable_nob_ghs
-        FROM (
-            SELECT
-                iu.{group_select},
-                iu.amt
+            UPPER(TRIM(m.store_code)) AS shop_code,
+            COUNT(DISTINCT NULLIF(TRIM(COALESCE(m.invno::text, '')), ''))::bigint AS handover_test_bill_to_manager
+        FROM invoices_manager m
+        WHERE m.invdate::date BETWEEN %(s)s AND %(e)s
+          AND UPPER(TRIM(COALESCE(m.store_code, ''))) = ANY(%(shops)s)
+          AND NULLIF(TRIM(COALESCE(m.invno::text, '')), '') IS NOT NULL
+        GROUP BY UPPER(TRIM(m.store_code))
+    )
             FROM invoice_union iu
             INNER JOIN consumable_tills ct ON ct.shop_code = iu.shop_code AND ct.till_no = iu.till_no
             WHERE iu.src_priority = 1{extra_and_sql_qualified}
@@ -1224,7 +1205,7 @@ def render_shopwise_test_bill_analysis(start_date: date, end_date: date, key_suf
                 if cashier_login > 0 else "Cashier Login is 0, so Generated Test Bill % = 0"
             ),
             "Unique bill handover to manager": (
-                f"Unique cashier+till sessions per selected date from invoices_manager (grouped by bill_date, cashier, till_no) = {handover_to_manager:,.0f}."
+                f"Count of distinct invoices (invno) recorded in invoices_manager for the selected period and shop = {handover_to_manager:,.0f}."
             ),
             "Bill handover %": (
                 f"(Unique bill handover to manager ({handover_to_manager:,.0f}) / Cashier Generated Test Bills ({unique_test_generated:,.0f})) x 100 = {bill_handover_pct:.2f}%"
@@ -1484,6 +1465,7 @@ def get_column_help_text() -> dict:
         "Diff (GHS)": "ERP ERP NOB (GHS) - [Scanned NOB (GHS) + Consumable NOB (GHS)]",
         "Scanned GHS %": "(Scanned NOB (GHS) / ERP ERP NOB (GHS)) × 100",
         "Test Bill Scanned": "Alert count where a_type = 'test bill'",
+        "Unique bill handover to manager": "Count of distinct invoices (invno) in invoices_manager for the selected period and shop",
         "Bill Date Mismatched": "Alert count where a_type indicates bill date mismatch",
         "Duplicate": "Alert count where a_type is Duplicate/Duplicate Bill",
         "Wrong Shop": "Alert count where a_type is Wrong Shop/Wrong Sho",
