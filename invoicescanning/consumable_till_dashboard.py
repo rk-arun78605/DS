@@ -2352,7 +2352,7 @@ def load_daily_diff_series(start_date: date, end_date: date) -> pd.DataFrame:
         return pd.read_sql(
             query,
             conn,
-            params={"s": start_date, "e": end_date},
+            params={"s": start_date, "e": end_date, "shops": sorted(list(IMPLEMENTED_SHOPS_SET))},
         )
 
 def render_diff_trend_graphs(anchor_end_date: date):
