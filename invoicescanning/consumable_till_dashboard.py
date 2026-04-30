@@ -2679,10 +2679,7 @@ def load_alert_type_drilldown(end_date: date, selected_error_type: str) -> pd.Da
                 ELSE INITCAP(TRIM(COALESCE(a_type, 'Unknown')))
             END AS error_type,
             COALESCE(NULLIF(TRIM(a_type), ''), '0') AS a_type_raw,
-            CASE
-                WHEN LOWER(TRIM(a_type)) = 'duplicate bill' THEN scanned_date::date
-                ELSE a_entrytime::date
-            END AS alert_date
+            COALESCE(scanned_date::date, a_entrytime::date) AS alert_date
         FROM alerts
         WHERE UPPER(TRIM(a_store_code)) = ANY(%(shops)s)
     )
