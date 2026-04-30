@@ -823,6 +823,14 @@ def load_owner_view(start_date: date, end_date: date) -> pd.DataFrame:
     """
 
     with get_db_connection() as conn:
+        # Dump final SQL for debugging to workspace file
+        try:
+            dbg_path = os.path.join(os.path.dirname(__file__), 'tmp_owner_view_query.sql')
+            with open(dbg_path, 'w', encoding='utf-8') as f:
+                f.write(query)
+        except Exception:
+            pass
+
         return pd.read_sql(
             query,
             conn,
