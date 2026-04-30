@@ -9,6 +9,7 @@ import re
 from urllib.parse import urlencode, quote
 import streamlit.components.v1 as components
 import plotly.express as px
+import plotly.graph_objects as go
 from datetime import date, datetime, timedelta
 import calendar
 import io
@@ -650,7 +651,7 @@ def _build_live_scan_agg_cte(group_by_columns: list[str], extra_where: str = "")
         "\n          " + extra_where.strip().replace("WHERE ", "AND ", 1)
     ) if extra_where.strip() else ""
     # For consumable_agg subquery, qualify shop_code references with table prefix "iu."
-    extra_and_sql_qualified = extra_and_sql.replace("AND shop_code", "AND iu.shop_code") if extra_and_sql else ""
+    extra_and_sql_qualified = re.sub(r'\bshop_code\b', 'iu.shop_code', extra_and_sql) if extra_and_sql else ""
     
     return f"""
     consumable_tills AS (
@@ -673,6 +674,7 @@ def _build_live_scan_agg_cte(group_by_columns: list[str], extra_where: str = "")
                 WHEN NULLIF(REGEXP_REPLACE(COALESCE(i.tillno::text, ''), '[^0-9]', '', 'g'), '') IS NULL THEN NULL
                 ELSE NULLIF(REGEXP_REPLACE(COALESCE(i.tillno::text, ''), '[^0-9]', '', 'g'), '')::int
             END AS till_no,
+
             1 AS src_priority
         FROM invoices i
         WHERE NULLIF(TRIM(COALESCE(i.invno::text, '')), '') IS NOT NULL
@@ -808,7 +810,7 @@ def load_owner_view(start_date: date, end_date: date) -> pd.DataFrame:
         GREATEST(COALESCE(e.erp_nob, 0) - (COALESCE(sc.scan_nob, 0) + COALESCE(sc.consumable_till_nob, 0) + COALESCE(e.test_bills, 0)), 0) AS bills_not_scanned,
         CASE
             WHEN COALESCE(e.erp_nob, 0) > 0
-            THEN ROUND(((COALESCE(sc.scan_nob, 0) + COALESCE(sc.consumable_till_nob, 0) + COALESCE(e.test_bills, 0))::numeric / e.erp_nob) * 100, 2)
+            THEN ROUND((COALESCE(sc.scan_nob, 0)::numeric / e.erp_nob) * 100, 2)
             ELSE 0
         END AS bill_pct,
         COALESCE(e.erp_nob_ghs, 0)          AS erp_erp_nob_ghs,
@@ -883,9 +885,10 @@ def load_shopwise_test_bill_analysis(start_date: date, end_date: date) -> pd.Dat
     generated_agg AS (
         SELECT
             shop_code,
-            COUNT(DISTINCT invno) FILTER (
-                WHERE amt = 0.01
-                  AND NULLIF(invno, '') IS NOT NULL
+            -- Count total invno where amt = 0.01 (each invoice counted once)
+            COUNT(*) FILTER (
+                WHERE COALESCE(amt, 0) = 0.01
+                  AND NULLIF(TRIM(COALESCE(invno, '')), '') IS NOT NULL
             )::bigint AS test_bills_generated
         FROM erp_rows
         GROUP BY shop_code
@@ -923,6 +926,7 @@ def load_shopwise_test_bill_analysis(start_date: date, end_date: date) -> pd.Dat
     manager_agg AS (
         SELECT
             shop_code,
+            -- Count unique invoice numbers handed over to manager (invno not null)
             COUNT(*) FILTER (WHERE has_handover_bill = 1)::bigint AS handover_test_bill_to_manager
         FROM manager_sessions
         GROUP BY shop_code
@@ -1118,7 +1122,7 @@ def render_shopwise_test_bill_drilldown_table(
     )
 
 
-def render_shopwise_test_bill_analysis(start_date: date, end_date: date):
+def render_shopwise_test_bill_analysis(start_date: date, end_date: date, key_suffix: str = ""):
     raw_df = load_shopwise_test_bill_analysis(start_date, end_date)
     if raw_df is None or raw_df.empty:
         st.info("No shop-wise test bill analysis data for selected date range.")
@@ -1157,8 +1161,8 @@ def render_shopwise_test_bill_analysis(start_date: date, end_date: date):
         "Shop Code",
         "Shop Name",
         "Cashier Login",
-        "Cashier Generated Test Bills",
         "Cashier Not Generated Test Bills",
+        "Cashier Generated Test Bills",
         "Unique bill handover to manager",
         "Missing test bill",
         "Not Generated Bill %",
@@ -1323,7 +1327,7 @@ def render_shopwise_test_bill_analysis(start_date: date, end_date: date):
         "Select Shop Code For Details",
         options=dropdown_shop_options,
         index=0,
-        key=f"shopwise_test_bill_dropdown_{start_date}_{end_date}",
+        key=f"shopwise_test_bill_dropdown_{start_date}_{end_date}{key_suffix}",
         label_visibility="collapsed",
     )
 
@@ -1433,11 +1437,21 @@ def get_column_tooltip_config() -> dict:
         "ERP NOB": st.column_config.NumberColumn("ERP NOB", help="Count of bills from `erpdata.invno`"),
         "Scan NOB": st.column_config.NumberColumn("Scan NOB", help="Count of bills from scanned invoices (excluding mapped consumable tills)"),
         "Consumable Till NOB": st.column_config.NumberColumn("Consumable Till NOB", help="Count of scanned bills where till is in consumable till mapping"),
-        "ERP Test Bills": st.column_config.NumberColumn("ERP Test Bills", help="Count of ERP bills where amount = 0.01"),
-        "Cashier Not Generated Test Bills": st.column_config.NumberColumn("Cashier Not Generated Test Bills", help="Count of cashier+till sessions without a 0.01 test bill"),
+        "ERP Test Bills": st.column_config.NumberColumn(
+            "ERP Test Bills",
+            help="Count of ERP invoices where amount = 0.01 (each invoice counted once)",
+        ),
+        "Cashier Not Generated Test Bills": st.column_config.NumberColumn(
+            "Cashier Not Generated Test Bills",
+            help="Count of cashier+till sessions that do NOT have any invoice with amt = 0.01",
+        ),
+        "Cashier Generated Test Bills": st.column_config.NumberColumn(
+            "Cashier Generated Test Bills",
+            help="Count of invoices (erpdata.invno) where amt = 0.01 (each invoice counted once)",
+        ),
         "Total Accounted Bills": st.column_config.NumberColumn("Total Accounted Bills", help="Scan NOB + Consumable Till NOB + ERP Test Bills"),
         "Bills not scanned": st.column_config.NumberColumn("Bills not scanned", help="ERP NOB - Total Accounted Bills"),
-        "Scanned bill %": st.column_config.NumberColumn("Scanned bill %", help="(Total Accounted Bills / ERP NOB) × 100", format="%.2f%%"),
+        "Scanned bill %": st.column_config.NumberColumn("Scanned bill %", help="(Scan NOB / ERP NOB) × 100", format="%.2f%%"),
         "ERP ERP NOB (GHS)": st.column_config.NumberColumn("ERP ERP NOB (GHS)", help="Sum of `erpdata.amt`", format="%.0f"),
         "Scanned NOB (GHS)": st.column_config.NumberColumn("Scanned NOB (GHS)", help="Sum of scanned invoice amount excluding consumable tills", format="%.0f"),
         "Consumable NOB (GHS)": st.column_config.NumberColumn("Consumable NOB (GHS)", help="Sum of scanned invoice amount from consumable tills", format="%.2f"),
@@ -1458,11 +1472,12 @@ def get_column_help_text() -> dict:
         "ERP NOB": "Count of bills from erpdata.invno",
         "Scan NOB": "Count of bills from scanned invoices (excluding mapped consumable tills)",
         "Consumable Till NOB": "Count of scanned bills where till is in consumable till mapping",
-        "ERP Test Bills": "Count of ERP bills where amount = 0.01",
-        "Cashier Not Generated Test Bills": "Count of cashier+till sessions without a 0.01 test bill",
+        "ERP Test Bills": "Count of ERP invoices where amount = 0.01 (each invoice counted once)",
+        "Cashier Not Generated Test Bills": "Count of cashier+till sessions that do NOT have any invoice with amt = 0.01",
+        "Cashier Generated Test Bills": "Count of invoices (erpdata.invno) where amt = 0.01 (each invoice counted once)",
         "Total Accounted Bills": "Scan NOB + Consumable Till NOB + ERP Test Bills",
         "Bills not scanned": "ERP NOB - Total Accounted Bills",
-        "Scanned bill %": "(Total Accounted Bills / ERP NOB) × 100",
+        "Scanned bill %": "(Scan NOB / ERP NOB) × 100",
         "ERP ERP NOB (GHS)": "Sum of erpdata.amt",
         "Scanned NOB (GHS)": "Sum of scanned invoice amount excluding consumable tills",
         "Consumable NOB (GHS)": "Sum of scanned invoice amount from consumable tills",
@@ -1502,7 +1517,7 @@ def build_cell_tooltips(display_df: pd.DataFrame) -> pd.DataFrame:
             f"ERP NOB ({erp_nob:,}) - Total Accounted Bills ({total_accounted:,}) = {not_scanned:,}"
         )
         tips.at[idx, "Bill %"] = (
-            f"(Total Accounted Bills ({total_accounted:,}) / ERP NOB ({erp_nob:,})) × 100 = {bill_pct:.2f}%"
+            f"(Scan NOB ({scan_nob:,}) / ERP NOB ({erp_nob:,})) × 100 = {bill_pct:.2f}%"
             if erp_nob > 0 else "ERP NOB is 0, so Bill % = 0"
         )
         tips.at[idx, "Diff (GHS)"] = (
@@ -2010,7 +2025,7 @@ def render_summary_html_table(
         calc_tip_map = {
             col_total_accounted: f"Scan NOB ({t_scan:,}) + Consumable Till NOB ({t_cons:,}) + ERP Test Bills ({t_test:,}) = {t_total:,}",
             "Bills not scanned": f"ERP NOB ({t_erp:,}) - Total Accounted Bills ({t_total:,}) = {t_not:,}",
-            col_bill_pct: f"(Total Accounted Bills ({t_total:,}) / ERP NOB ({t_erp:,})) × 100 = {t_bill_pct:.2f}%" if t_erp > 0 else "ERP NOB is 0, so Bill % = 0",
+            col_bill_pct: f"(Scan NOB ({t_scan:,}) / ERP NOB ({t_erp:,})) × 100 = {t_bill_pct:.2f}%" if t_erp > 0 else "ERP NOB is 0, so Bill % = 0",
             "Diff (GHS)": f"ERP ERP NOB ({t_erp_ghs:,.2f}) - [Scanned NOB ({t_scanned_ghs:,.2f}) + Consumable NOB ({t_cons_ghs:,.2f})] = {t_diff_ghs:,.2f}",
             col_diff_pct: f"(Scanned NOB (GHS) ({t_scanned_ghs:,.2f}) / ERP ERP NOB ({t_erp_ghs:,.2f})) × 100 = {t_diff_pct:.2f}%" if t_erp_ghs != 0 else "ERP ERP NOB (GHS) is 0, so Diff in % = 0",
         }
@@ -2070,10 +2085,11 @@ def render_summary_html_table(
 
     erp_nob_total = totals.get("ERP NOB", 0.0)
     accounted_total = totals.get(col_total_accounted, 0.0)
+    scan_nob_total = totals.get("Scan NOB", 0.0)
     erp_ghs_total = totals.get("ERP ERP NOB (GHS)", 0.0)
     scanned_ghs_total = totals.get("Scanned NOB (GHS)", 0.0)
 
-    totals[col_bill_pct] = (accounted_total / erp_nob_total * 100.0) if erp_nob_total > 0 else 0.0
+    totals[col_bill_pct] = (scan_nob_total / erp_nob_total * 100.0) if erp_nob_total > 0 else 0.0
     totals[col_diff_pct] = (scanned_ghs_total / erp_ghs_total * 100.0) if erp_ghs_total > 0 else 0.0
 
     total_row: list[str] = []
@@ -2332,10 +2348,12 @@ def load_daily_diff_series(start_date: date, end_date: date) -> pd.DataFrame:
         SELECT bill_date, SUM(erp_nob_ghs) AS erp_ghs
         FROM mv_wh_erp_daily
         WHERE bill_date BETWEEN %(s)s AND %(e)s
-          AND shop_code = ANY(%(shops)s)
+          AND shop_code IS NOT NULL
+          AND TRIM(shop_code) <> ''
+          AND shop_code NOT IN ('G01','G02','G03','G04','G05','G06','G07','G08','G09','G10','G11','G12','INV','SPX','SEL')
         GROUP BY bill_date
     ),
-    {_build_live_scan_agg_cte(['bill_date'], 'WHERE shop_code = ANY(%(shops)s)').rstrip().rstrip(',')}
+    {_build_live_scan_agg_cte(['bill_date'], "WHERE shop_code IS NOT NULL AND TRIM(shop_code) <> '' AND shop_code NOT IN ('G01','G02','G03','G04','G05','G06','G07','G08','G09','G10','G11','G12','INV','SPX','SEL')").rstrip().rstrip(',')}
     SELECT
         d.bill_date,
         COALESCE(e.erp_ghs, 0)                                                       AS erp_ghs,
@@ -2352,7 +2370,7 @@ def load_daily_diff_series(start_date: date, end_date: date) -> pd.DataFrame:
         return pd.read_sql(
             query,
             conn,
-            params={"s": start_date, "e": end_date, "shops": sorted(list(IMPLEMENTED_SHOPS_SET))},
+            params={"s": start_date, "e": end_date},
         )
 
 def render_diff_trend_graphs(anchor_end_date: date):
@@ -2505,6 +2523,87 @@ def render_weekly_diff_graph(rolling_4w_df: pd.DataFrame):
 
 
 @st.cache_data(ttl=300)
+def load_bill_handover_last10(end_date: date) -> pd.DataFrame:
+    """Daily avg Bill Handover % across all shops for the last 10 days."""
+    start_10 = end_date - timedelta(days=9)
+    query = """
+    WITH days AS (
+        SELECT generate_series(%(s)s::date, %(e)s::date, '1 day'::interval)::date AS bill_date
+    ),
+    erp_sessions AS (
+        SELECT
+            e.invdate::date AS bill_date,
+            UPPER(TRIM(e.store_code)) AS shop_code,
+            UPPER(TRIM(COALESCE(e.cashier, ''))) AS cashier_name,
+            NULLIF(REGEXP_REPLACE(COALESCE(e.tillno::text, ''), '[^0-9]', '', 'g'), '')::int AS till_no,
+            MAX(CASE WHEN e.amt = 0.01 THEN 1 ELSE 0 END) AS has_test_bill
+        FROM erpdata e
+        WHERE e.invdate::date BETWEEN %(s)s AND %(e)s
+          AND UPPER(TRIM(e.store_code)) = ANY(%(shops)s)
+          AND NULLIF(TRIM(COALESCE(e.cashier, '')), '') IS NOT NULL
+          AND NULLIF(REGEXP_REPLACE(COALESCE(e.tillno::text, ''), '[^0-9]', '', 'g'), '') IS NOT NULL
+          AND NULLIF(TRIM(COALESCE(e.invno::text, '')), '') IS NOT NULL
+        GROUP BY e.invdate::date, UPPER(TRIM(e.store_code)),
+                 UPPER(TRIM(COALESCE(e.cashier, ''))),
+                 NULLIF(REGEXP_REPLACE(COALESCE(e.tillno::text, ''), '[^0-9]', '', 'g'), '')::int
+    ),
+    unique_gen AS (
+        SELECT bill_date, shop_code,
+               COUNT(*) FILTER (WHERE has_test_bill = 1) AS unique_generated
+        FROM erp_sessions
+        GROUP BY bill_date, shop_code
+    ),
+    mgr_sessions AS (
+        SELECT
+            m.invdate::date AS bill_date,
+            UPPER(TRIM(COALESCE(m.store_code, ''))) AS shop_code,
+            UPPER(TRIM(COALESCE(m.cashier, ''))) AS cashier_name,
+            NULLIF(REGEXP_REPLACE(COALESCE(m.tillno::text, ''), '[^0-9]', '', 'g'), '')::int AS till_no,
+            MAX(CASE WHEN NULLIF(TRIM(COALESCE(m.invno::text, '')), '') IS NOT NULL THEN 1 ELSE 0 END) AS has_handover
+        FROM invoices_manager m
+        WHERE m.invdate::date BETWEEN %(s)s AND %(e)s
+          AND UPPER(TRIM(COALESCE(m.store_code, ''))) = ANY(%(shops)s)
+          AND NULLIF(TRIM(COALESCE(m.cashier, '')), '') IS NOT NULL
+          AND NULLIF(REGEXP_REPLACE(COALESCE(m.tillno::text, ''), '[^0-9]', '', 'g'), '') IS NOT NULL
+        GROUP BY m.invdate::date, UPPER(TRIM(COALESCE(m.store_code, ''))),
+                 UPPER(TRIM(COALESCE(m.cashier, ''))),
+                 NULLIF(REGEXP_REPLACE(COALESCE(m.tillno::text, ''), '[^0-9]', '', 'g'), '')::int
+    ),
+    mgr_agg AS (
+        SELECT bill_date, shop_code,
+               COUNT(*) FILTER (WHERE has_handover = 1) AS handover_count
+        FROM mgr_sessions
+        GROUP BY bill_date, shop_code
+    ),
+    daily AS (
+        SELECT
+            d.bill_date,
+            COALESCE(SUM(ug.unique_generated), 0) AS total_generated,
+            COALESCE(SUM(ma.handover_count), 0)   AS total_handover
+        FROM days d
+        LEFT JOIN unique_gen ug ON ug.bill_date = d.bill_date
+        LEFT JOIN mgr_agg   ma ON ma.bill_date = d.bill_date AND ma.shop_code = ug.shop_code
+        GROUP BY d.bill_date
+    )
+    SELECT
+        bill_date,
+        total_generated,
+        total_handover,
+        CASE WHEN total_generated > 0
+             THEN ROUND((total_handover::numeric / total_generated) * 100, 1)
+             ELSE 0
+        END AS handover_pct
+    FROM daily
+    ORDER BY bill_date
+    """
+    with get_db_connection() as conn:
+        return pd.read_sql(query, conn, params={
+            "s": start_10, "e": end_date,
+            "shops": sorted(list(IMPLEMENTED_SHOPS_SET)),
+        })
+
+
+@st.cache_data(ttl=300)
 def load_alert_type_comparison(end_date: date) -> pd.DataFrame:
     selected_date = end_date
     yesterday_date = end_date - timedelta(days=1)
@@ -2618,39 +2717,222 @@ def render_alert_error_by_type(end_date: date):
     alerts_df = load_alert_type_comparison(end_date)
 
     selected_label = end_date.strftime("%d %b %Y")
-    yday_label = (end_date - timedelta(days=1)).strftime("%d %b %Y")
-    mtd_label = f"{end_date.strftime('%b')} MTD"
+    yday_label     = (end_date - timedelta(days=1)).strftime("%d %b %Y")
+    mtd_label      = f"{end_date.strftime('%b')} MTD"
 
     if alerts_df.empty:
         st.info("No alert errors found for selected date/month context.")
         return
 
-    display_df = alerts_df.rename(
-        columns={
-            "a_type": "a_type",
-            "selected_date_total": f"Selected Date ({selected_label})",
-            "yesterday_total": f"{yday_label}",
-            "month_to_date_total": f"Month-to-Date ({mtd_label})",
-        }
+    # ── Map column names to display labels ───────────────────────────────────
+    col_map = {
+        "selected_date_total": f"Selected Date ({selected_label})",
+        "yesterday_total":     yday_label,
+        "month_to_date_total": f"Month-to-Date ({mtd_label})",
+    }
+    num_cols = list(col_map.keys())   # raw column names with numbers
+
+    # ── Build clickable HTML table ────────────────────────────────────────────
+    # Clicking any numeric cell stores (error_type, column_label) in session state
+    ss_key = "alert_type_drill"
+
+    header_cells = "<th>Alert Error Type</th>" + "".join(
+        f"<th>{col_map[c]}</th>" for c in num_cols
     )
 
-    render_styled_html_table(
-        display_df,
-        title="Alert Error TYPE",
-        auto_content_width=False,
-        wrap_header_text=True,
-        wrap_cell_text=True,
-        compact_mode=True,
-        title_class="section-title",
-        align_left=False,
-        align_title_with_table=False,
-        min_width_px_override=320,
-        table_layout_override="fixed",
-        overflow_x_override="hidden",
-        header_font_size_override="10px",
-        body_font_size_override="10.5px",
-        body_padding_override="6px 6px",
-    )
+    body_rows = ""
+    for _, row in alerts_df.iterrows():
+        a_type = str(row["a_type"])
+        body_rows += f"<tr><td class='ae-label'>{a_type}</td>"
+        for c in num_cols:
+            val = int(row[c]) if pd.notna(row[c]) else 0
+            col_label = col_map[c]
+            # Each clickable number fires a Streamlit query param + JS postMessage
+            body_rows += (
+                f"<td class='ae-num ae-clickable' "
+                f"data-type='{a_type}' data-col='{col_label}' "
+                f"onclick=\"drillAlert('{a_type}','{col_label}')\">{val:,}</td>"
+            )
+        body_rows += "</tr>"
+
+    # Current drilldown selection indicator
+    current_drill = st.session_state.get(ss_key)
+    drill_badge = ""
+    if current_drill:
+        drill_badge = (
+            f"<div class='ae-drill-badge'>🔍 {current_drill['error_type']} "
+            f"· {current_drill['col']}"
+            f" <span class='ae-clear' onclick=\"clearAlert()\">✕</span></div>"
+        )
+
+    table_html = f"""
+<style>
+.ae-wrap {{ width:100%; font-family:'Inter','Segoe UI',sans-serif;
+    border:1.5px solid #38bdf8; border-radius:7px;
+    overflow:hidden; padding:4px 4px 2px 4px;
+    box-sizing:border-box;
+}}
+.ae-wrap table {{
+    width:100%; border-collapse:collapse;
+    font-size:10.5px; table-layout:fixed;
+}}
+.ae-wrap th {{
+    background:#1e2a3a; color:#ffffff;
+    padding:5px 6px; font-size:10px; font-weight:600;
+    text-align:center;
+    border-bottom:2px solid #38bdf8;
+    border-right:1px solid #334155;
+    word-wrap:break-word; white-space:normal;
+}}
+.ae-wrap th:last-child {{ border-right:none; }}
+.ae-wrap td {{
+    padding:5px 6px;
+    border-bottom:1px solid #2d3a4a;
+    border-right:1px solid #1e2a3a;
+    text-align:center; color:#ffffff; font-size:10.5px;
+}}
+.ae-wrap td:last-child {{ border-right:none; }}
+.ae-label {{ text-align:left !important; color:#ffffff; }}
+.ae-num {{ color:#38bdf8; font-weight:600; }}
+.ae-clickable {{ cursor:pointer; }}
+.ae-clickable:hover {{ background:#1e3a5f !important; color:#fff !important; border-radius:3px; }}
+.ae-section-title {{
+    font-size:11px; font-weight:700; color:#ffffff;
+    text-transform:uppercase; letter-spacing:.05em;
+    margin-bottom:4px;
+}}
+.ae-drill-badge {{
+    font-size:10px; color:#fbbf24; background:#1a2535;
+    border:1px solid #2d3a4a; border-radius:4px;
+    padding:3px 8px; margin-top:4px; display:inline-block;
+}}
+.ae-clear {{ cursor:pointer; margin-left:6px; color:#f87171; font-weight:700; }}
+</style>
+<div class="ae-wrap">
+  <div class="ae-section-title">Alert Error TYPE</div>
+  {drill_badge}
+  <table>
+    <thead><tr>{header_cells}</tr></thead>
+    <tbody>{body_rows}</tbody>
+  </table>
+</div>
+<script>
+function drillAlert(errType, colLabel) {{
+    // Show inline loading feedback immediately
+    var existing = document.querySelector('.ae-drill-badge');
+    if (existing) {{
+        existing.innerHTML = '⏳ Loading ' + errType + '…';
+    }} else {{
+        var badge = document.createElement('div');
+        badge.className = 'ae-drill-badge';
+        badge.innerHTML = '⏳ Loading ' + errType + '…';
+        var wrap = document.querySelector('.ae-wrap');
+        if (wrap) wrap.insertBefore(badge, wrap.querySelector('table'));
+    }}
+    // Navigate parent to new URL — this triggers a full Streamlit rerun
+    const url = new URL(window.parent.location.href);
+    url.searchParams.set('alert_drill_type', errType);
+    url.searchParams.set('alert_drill_col',  colLabel);
+    url.searchParams.delete('alert_drill_clear');
+    window.parent.location.href = url.toString();
+}}
+function clearAlert() {{
+    // Navigate to URL without drill params — triggers rerun, Python clears state
+    const url = new URL(window.parent.location.href);
+    url.searchParams.delete('alert_drill_type');
+    url.searchParams.delete('alert_drill_col');
+    url.searchParams.set('alert_drill_clear', '1');
+    window.parent.location.href = url.toString();
+}}
+</script>
+"""
+    # Render the table — dynamic height: title(22) + header(28) + each row(26) + badge(30 if active) + padding(18)
+    _n_rows = len(alerts_df) if alerts_df is not None else 0
+    _badge_h = 32 if current_drill else 0
+    _table_h = 22 + 28 + _n_rows * 26 + _badge_h + 20
+    components.html(table_html, height=_table_h, scrolling=False)
+
+    # ── Bill Handover % — Last 10 Days line chart ─────────────────────────────
+    try:
+        ho_df = load_bill_handover_last10(end_date)
+    except Exception:
+        ho_df = pd.DataFrame()
+
+    if not ho_df.empty:
+        ho_df["bill_date"] = pd.to_datetime(ho_df["bill_date"])
+        ho_df["day_label"] = ho_df["bill_date"].dt.strftime("%d %b")
+        ho_df["handover_pct"] = pd.to_numeric(ho_df["handover_pct"], errors="coerce").fillna(0)
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=ho_df["day_label"],
+            y=ho_df["handover_pct"],
+            mode="lines+markers",
+            line=dict(color="#38bdf8", width=2.5, shape="spline", smoothing=1.2),
+            marker=dict(size=5, color="#38bdf8", line=dict(color="#0a0f1e", width=1)),
+            fill="tozeroy",
+            fillcolor="rgba(56,189,248,0.08)",
+            hovertemplate="%{x}<br><b>%{y:.1f}%</b><extra></extra>",
+        ))
+        fig.update_layout(
+            title=dict(
+                text="Bill Handover % — Last 10 Days",
+                font=dict(size=11, color="#ffffff", family="Inter"),
+                x=0, xanchor="left",
+            ),
+            height=160,
+            margin=dict(l=4, r=4, t=28, b=4),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(
+                showgrid=False, zeroline=False,
+                tickfont=dict(size=9, color="#ffffff"),
+                tickangle=0,
+            ),
+            yaxis=dict(
+                showgrid=True, gridcolor="#1e2a3a", zeroline=False,
+                tickfont=dict(size=9, color="#ffffff"),
+                ticksuffix="%",
+                range=[0, max(110, ho_df["handover_pct"].max() * 1.15)],
+            ),
+            showlegend=False,
+        )
+        st.markdown("""
+        <style>
+        div[data-testid="stPlotlyChart"] {
+            border: 1.5px solid #38bdf8 !important;
+            border-radius: 7px;
+            overflow: hidden;
+            padding: 2px;
+        }
+        </style>""", unsafe_allow_html=True)
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    # ── Sync query params → session state on every rerun ───────────────────
+    try:
+        qp = st.query_params
+        drill_type  = qp.get("alert_drill_type", None)
+        drill_col   = qp.get("alert_drill_col",  None)
+        drill_clear = qp.get("alert_drill_clear", None)
+        if drill_clear:
+            # ✕ was clicked — wipe session state and clean up the URL flag
+            st.session_state.pop(ss_key, None)
+            try:
+                del st.query_params["alert_drill_clear"]
+            except Exception:
+                pass
+        elif drill_type and str(drill_type).strip():
+            # Cell was clicked — store which error type + column was selected
+            st.session_state[ss_key] = {
+                "error_type": str(drill_type).strip(),
+                "col":        str(drill_col).strip() if drill_col else "",
+            }
+        else:
+            # No drill params in URL at all → clear any stale session state
+            # so drilldown never appears on a fresh page load
+            st.session_state.pop(ss_key, None)
+    except Exception:
+        pass
 
 
 def render_alert_error_type_drilldown(end_date: date):
@@ -3010,11 +3292,48 @@ def main():
     update_and_get_new_shops(display_df["Shop Code"].tolist())
 
     render_summary_html_table(display_df)
+
     st.markdown(
         f"<div class='kpi-heading-center' style='margin-top:0px; margin-bottom:0.35rem;'>Shop wise Test Bill analysis • {period_compact}</div>",
         unsafe_allow_html=True,
     )
     render_shopwise_test_bill_analysis(start_date, end_date)
+
+    # ── Alert drilldown → appears after Shop wise Test Bill analysis ──────────
+    _alert_drill = st.session_state.get("alert_type_drill")
+    if _alert_drill and _alert_drill.get("error_type"):
+        _dt = _alert_drill["error_type"]
+        _cl = _alert_drill.get("col", "")
+        st.markdown(
+            f"<div class='kpi-heading-center' style='margin-top:8px; margin-bottom:0.3rem;'>"
+            f"🔍 Alert Drilldown — <span style='color:#38bdf8'>{_dt}</span>"
+            f"{(' · ' + _cl) if _cl else ''}"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        with st.spinner(f"Loading {_dt} drilldown…"):
+            drill_df = load_alert_type_drilldown(end_date, _dt)
+        if not drill_df.empty:
+            render_styled_html_table(
+                drill_df,
+                title=f"Alert Detail — {_dt}",
+                auto_content_width=False,
+                wrap_header_text=True,
+                wrap_cell_text=True,
+                compact_mode=True,
+                title_class="section-title",
+                align_left=False,
+                align_title_with_table=False,
+                min_width_px_override=320,
+                table_layout_override="auto",
+                overflow_x_override="auto",
+                header_font_size_override="10px",
+                body_font_size_override="10.5px",
+                body_padding_override="5px 6px",
+            )
+        else:
+            st.info(f"No detail rows found for '{_dt}' in current month.")
+        st.markdown("<div style='height: 0px;'></div>", unsafe_allow_html=True)
 
     csv_data = summary_data.copy()
     csv_data["shop_name"] = csv_data["shop_code"].map(load_shop_name_map()).fillna(csv_data["shop_code"])
