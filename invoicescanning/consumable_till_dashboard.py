@@ -819,7 +819,11 @@ def load_owner_view(start_date: date, end_date: date) -> pd.DataFrame:
     """
 
     with get_db_connection() as conn:
-        return pd.read_sql(query, conn, params={"s": start_date, "e": end_date})
+        return pd.read_sql(
+            query,
+            conn,
+            params={"s": start_date, "e": end_date, "shops": sorted(list(IMPLEMENTED_SHOPS_SET))},
+        )
 
 
 @st.cache_data(ttl=300)
@@ -2352,7 +2356,7 @@ def load_daily_diff_series(start_date: date, end_date: date) -> pd.DataFrame:
         return pd.read_sql(
             query,
             conn,
-            params={"s": start_date, "e": end_date, "shops": sorted(list(IMPLEMENTED_SHOPS_SET))},
+            params={"s": start_date, "e": end_date},
         )
 
 def render_diff_trend_graphs(anchor_end_date: date):
