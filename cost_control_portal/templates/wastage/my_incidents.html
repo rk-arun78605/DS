@@ -1,0 +1,114 @@
+{% extends 'wastage/base.html' %}
+{% block title %}My Incidents — Cost Control Portal{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="container-fluid px-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h1><i class="bi bi-list-ul me-2"></i>My Incidents</h1>
+        <nav aria-label="breadcrumb">
+          <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+            <li class="breadcrumb-item active">My Incidents</li>
+          </ol>
+        </nav>
+      </div>
+      <a href="/submit/" class="btn btn-melcom align-self-center">
+        <i class="bi bi-plus-circle me-2"></i>New Incident
+      </a>
+    </div>
+  </div>
+</div>
+
+<div class="container-fluid px-3 pt-3">
+
+  <!-- Filter -->
+  <div class="ccp-card mb-3 animate-fade-up">
+    <div class="ccp-card-body">
+      <form method="GET" class="row g-2 align-items-end">
+        <div class="col-8 col-md-4">
+          <label class="form-label"><i class="bi bi-calendar3 me-1"></i>Filter by Date</label>
+          <input type="date" name="date" class="form-control" value="{{ date_filter }}" />
+        </div>
+        <div class="col-4 col-md-3">
+          <button type="submit" class="btn btn-melcom w-100">
+            <i class="bi bi-search me-1"></i>Filter
+          </button>
+        </div>
+        {% if date_filter %}
+        <div class="col-12 col-md-3">
+          <a href="/my-incidents/" class="btn btn-outline-secondary w-100">
+            <i class="bi bi-x-circle me-1"></i>Clear
+          </a>
+        </div>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+
+  <!-- Table -->
+  {% if incidents %}
+  <div class="ccp-card animate-fade-up">
+    <div class="ccp-card-header">
+      <i class="bi bi-table"></i> {{ incidents|length }} Incident{{ incidents|length|pluralize }}
+    </div>
+    <div class="table-responsive">
+      <table class="ccp-table">
+        <thead>
+          <tr>
+            <th>Incident No</th>
+            <th>Date</th>
+            <th>Department</th>
+            <th>Items</th>
+            <th>Total Value (GH₵)</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inc in incidents %}
+          <tr>
+            <td data-label="Incident No">
+              <span class="font-mono fw-700 text-melcom-red" style="font-size:12px">{{ inc.incident_no }}</span>
+            </td>
+            <td data-label="Date">{{ inc.submit_date|date:"d M Y, H:i" }}</td>
+            <td data-label="Department"><span class="badge bg-secondary">{{ inc.department }}</span></td>
+            <td data-label="Items">
+              {% if inc.item_count > 1 %}
+              <span class="badge bg-info text-dark">{{ inc.item_count }} items</span>
+              {% else %}
+              <div class="fw-600" style="font-size:13px">{{ inc.item_name|truncatechars:30 }}</div>
+              <small class="text-muted font-mono">{{ inc.item_code }}</small>
+              {% endif %}
+            </td>
+            <td data-label="Total Value" class="fw-700" style="color:var(--melcom-red)">{{ inc.total_value_sum|floatformat:2 }}</td>
+            <td data-label="Status">
+              <span class="status-badge status-{{ inc.status }}">{{ inc.status }}</span>
+            </td>
+            <td data-label="Action">
+              <span class="text-muted" style="font-size:12px">—</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="ccp-card animate-fade-up">
+    <div class="ccp-card-body text-center py-5">
+      <i class="bi bi-inbox display-4 text-muted d-block mb-3"></i>
+      <div class="fw-700 mb-1">No incidents found</div>
+      <div class="text-muted mb-3" style="font-size:13px">
+        {% if date_filter %}No incidents on the selected date.{% else %}You have not submitted any incidents yet.{% endif %}
+      </div>
+      <a href="/submit/" class="btn btn-melcom">
+        <i class="bi bi-plus-circle me-2"></i>Submit Your First Incident
+      </a>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

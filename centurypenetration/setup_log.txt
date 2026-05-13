@@ -1,0 +1,40 @@
+2025-12-11 14:47:05,696 - INFO - ============================================================
+2025-12-11 14:47:05,696 - INFO - Century Penetration Database Setup
+2025-12-11 14:47:05,696 - INFO - ============================================================
+2025-12-11 14:47:12,746 - ERROR - Failed to create tables and views. Exiting.
+2025-12-11 14:51:49,733 - INFO - ============================================================
+2025-12-11 14:51:49,733 - INFO - Century Penetration Database Setup
+2025-12-11 14:51:49,733 - INFO - ============================================================
+2025-12-11 14:51:49,821 - ERROR - Failed to create tables and views. Exiting.
+2025-12-11 14:52:48,591 - INFO - ============================================================
+2025-12-11 14:52:48,591 - INFO - Century Penetration Database Setup
+2025-12-11 14:52:48,591 - INFO - ============================================================
+2025-12-11 14:52:48,983 - ERROR - Failed to create tables and views. Exiting.
+2025-12-11 14:53:44,980 - INFO - ============================================================
+2025-12-11 14:53:44,980 - INFO - Century Penetration Database Setup
+2025-12-11 14:53:44,980 - INFO - ============================================================
+2025-12-11 14:53:45,401 - INFO -   - BASE TABLE: reorder_level
+2025-12-11 14:53:45,401 - INFO -   - BASE TABLE: sales
+2025-12-11 14:53:45,401 - INFO -   - BASE TABLE: sales_apr2025
+2025-12-11 14:53:45,401 - INFO -   - BASE TABLE: sales_aug2025
+2025-12-11 14:53:45,401 - INFO -   - BASE TABLE: sales_dec2025
+2025-12-11 14:53:45,402 - INFO -   - BASE TABLE: sales_feb2025
+2025-12-11 14:53:45,402 - INFO -   - BASE TABLE: sales_jan2025
+2025-12-11 14:53:45,402 - INFO -   - BASE TABLE: sales_jul2025
+2025-12-11 14:53:45,402 - INFO -   - BASE TABLE: sales_jun2025
+2025-12-11 14:53:45,403 - INFO -   - BASE TABLE: sales_mar2025
+2025-12-11 14:53:45,403 - INFO -   - BASE TABLE: sales_may2025
+2025-12-11 14:53:45,403 - INFO -   - BASE TABLE: sales_nov2025
+2025-12-11 14:53:45,403 - INFO -   - BASE TABLE: sales_oct2025
+2025-12-11 14:53:45,404 - INFO -   - BASE TABLE: sales_sep2025
+2025-12-11 14:53:45,404 - INFO -   - BASE TABLE: sit
+2025-12-11 14:53:45,461 - INFO -   Tables: 3/3
+2025-12-11 14:53:45,466 - INFO -   Materialized Views: 3/3
+2025-12-11 14:53:45,469 - INFO -   Functions:
+2025-12-11 14:53:45,483 - INFO - 
+Next steps:
+2025-12-11 14:53:45,483 - INFO -   1. Run: python load_century_data.py
+2025-12-11 14:53:45,483 - INFO -   2. This will load reorder_level and SIT data
+2025-12-11 14:53:45,483 - INFO -   3. Add sales CSV files (jan25.csv - dec25.csv) when ready
+2025-12-11 14:53:45,483 - INFO -   4. Run load_century_data.py again to load sales
+2025-12-11 14:53:45,483 - INFO - ============================================================

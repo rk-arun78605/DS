@@ -1,0 +1,286 @@
+{% extends 'wastage/base.html' %}
+{% block title %}Dashboard — Cost Control Portal{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="page-header">
+  <div class="container-fluid px-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h1><i class="bi bi-speedometer2 me-2"></i>Dashboard</h1>
+        <nav aria-label="breadcrumb">
+          <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item active">Home</li>
+          </ol>
+        </nav>
+      </div>
+      <div class="text-end">
+        <div style="font-size:1rem;font-weight:700;color:#fff">{{ today|date:"l, d M Y" }}</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.7)">
+          {% if is_approver %}<span class="badge bg-warning text-dark">Supervisor / Manager View</span>
+          {% else %}<span class="badge bg-primary">Staff View</span>{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="container-fluid px-3 pt-3">
+
+  <!-- Staff Info Banner -->
+  <div class="ccp-card mb-3 animate-fade-up">
+    <div class="ccp-card-body">
+      <div class="row align-items-center">
+        <div class="col-auto">
+          <div class="user-avatar" style="width:56px;height:56px;font-size:1.4rem;background:var(--melcom-red)">
+            {{ staff.emp_name|first|upper }}
+          </div>
+        </div>
+        <div class="col">
+          <div class="fw-700" style="font-size:1.1rem">{{ staff.emp_name }}</div>
+          <div class="text-muted" style="font-size:12px">
+            <i class="bi bi-person-badge me-1"></i>{{ staff.emp_id }}
+            &nbsp;|&nbsp;
+            <i class="bi bi-shop me-1"></i>{{ staff.shop_name }} ({{ staff.shop_code }})
+            {% if staff.department %}&nbsp;|&nbsp;<i class="bi bi-layers me-1"></i>{{ staff.department }}{% endif %}
+          </div>
+        </div>
+        <div class="col-auto d-none d-md-block">
+          <span class="badge bg-{% if is_approver %}warning text-dark{% else %}primary{% endif %} px-3 py-2" style="font-size:12px">
+            {{ staff.get_role_display }}
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ SUPERVISOR / MANAGER VIEW ═══════════════ -->
+  {% if is_approver %}
+
+  <!-- 48hr Warning -->
+  {% if missing_yesterday %}
+  <div class="alert alert-warning d-flex align-items-start gap-2 animate-fade-up" role="alert">
+    <i class="bi bi-exclamation-triangle-fill fs-5 mt-1 flex-shrink-0"></i>
+    <div>
+      <strong>No incidents submitted yesterday!</strong>
+      <div style="font-size:13px">
+        You have a <strong>48-hour window</strong> to submit missing incidents.
+        <span class="badge bg-danger ms-2">{{ hours_left }}h remaining</span>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Stats Row -->
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-md-3 animate-fade-up animate-delay-1">
+      <div class="stat-card danger">
+        <div class="d-flex align-items-center gap-3">
+          <div class="stat-icon red"><i class="bi bi-clock-history"></i></div>
+          <div>
+            <div class="stat-value">{{ pending_count }}</div>
+            <div class="stat-label">Pending Approval</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3 animate-fade-up animate-delay-2">
+      <div class="stat-card warning">
+        <div class="d-flex align-items-center gap-3">
+          <div class="stat-icon gold"><i class="bi bi-currency-dollar"></i></div>
+          <div>
+            <div class="stat-value" style="font-size:1.3rem">GH₵{{ today_value|floatformat:2 }}</div>
+            <div class="stat-label">Today's Wastage Value</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3 animate-fade-up animate-delay-3">
+      <div class="stat-card success">
+        <div class="d-flex align-items-center gap-3">
+          <div class="stat-icon green"><i class="bi bi-calendar-check"></i></div>
+          <div>
+            <div class="stat-value">{{ today_incidents|length }}</div>
+            <div class="stat-label">Today's Incidents</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3 animate-fade-up animate-delay-4">
+      <div class="stat-card info">
+        <div class="d-flex align-items-center gap-3">
+          <div class="stat-icon blue"><i class="bi bi-shop"></i></div>
+          <div>
+            <div class="stat-value">{{ staff.shop_code }}</div>
+            <div class="stat-label">Your Branch</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="row g-3 mb-3">
+    <div class="col-12 col-md-4 animate-fade-up">
+      <a href="/approvals/" class="text-decoration-none">
+        <div class="ccp-card h-100 p-3 d-flex align-items-center gap-3 cursor-pointer">
+          <div class="stat-icon red" style="width:48px;height:48px;font-size:1.3rem;flex-shrink:0">
+            <i class="bi bi-clipboard-check"></i>
+          </div>
+          <div>
+            <div class="fw-700">Pending Approvals</div>
+            <div class="text-muted" style="font-size:12px">Review & approve incidents</div>
+          </div>
+          <i class="bi bi-chevron-right ms-auto text-muted"></i>
+        </div>
+      </a>
+    </div>
+    <div class="col-12 col-md-4 animate-fade-up animate-delay-1">
+      <a href="/reports/daily/" class="text-decoration-none">
+        <div class="ccp-card h-100 p-3 d-flex align-items-center gap-3 cursor-pointer">
+          <div class="stat-icon green" style="width:48px;height:48px;font-size:1.3rem;flex-shrink:0">
+            <i class="bi bi-bar-chart-line"></i>
+          </div>
+          <div>
+            <div class="fw-700">Daily Report</div>
+            <div class="text-muted" style="font-size:12px">View wastage summary</div>
+          </div>
+          <i class="bi bi-chevron-right ms-auto text-muted"></i>
+        </div>
+      </a>
+    </div>
+    <div class="col-12 col-md-4 animate-fade-up animate-delay-2">
+      <a href="/submit/" class="text-decoration-none">
+        <div class="ccp-card h-100 p-3 d-flex align-items-center gap-3 cursor-pointer">
+          <div class="stat-icon gold" style="width:48px;height:48px;font-size:1.3rem;flex-shrink:0">
+            <i class="bi bi-plus-circle"></i>
+          </div>
+          <div>
+            <div class="fw-700">Submit Incident</div>
+            <div class="text-muted" style="font-size:12px">Report new wastage</div>
+          </div>
+          <i class="bi bi-chevron-right ms-auto text-muted"></i>
+        </div>
+      </a>
+    </div>
+  </div>
+
+  <!-- Today's Incidents Table -->
+  {% if today_incidents %}
+  <div class="ccp-card animate-fade-up">
+    <div class="ccp-card-header">
+      <i class="bi bi-list-check"></i> Today's Incidents — {{ today|date:"d M Y" }}
+      <a href="/approvals/?date={{ today|date:'Y-m-d' }}" class="ms-auto btn btn-sm btn-outline-light" style="font-size:11px">
+        View All <i class="bi bi-arrow-right ms-1"></i>
+      </a>
+    </div>
+    <div class="table-responsive">
+      <table class="ccp-table">
+        <thead>
+          <tr>
+            <th>Incident No</th>
+            <th>Submitted By</th>
+            <th>Department</th>
+            <th>Item</th>
+            <th>Qty</th>
+            <th>Value (GH₵)</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inc in today_incidents %}
+          <tr>
+            <td data-label="Incident No"><span class="font-mono fw-700 text-melcom-red" style="font-size:12px">{{ inc.incident_no }}</span></td>
+            <td data-label="Submitted By">{{ inc.submitted_name }}</td>
+            <td data-label="Department"><span class="badge bg-secondary">{{ inc.department }}</span></td>
+            <td data-label="Item">{{ inc.item_name|truncatechars:30 }}</td>
+            <td data-label="Qty">{{ inc.quantity }} {{ inc.uom }}</td>
+            <td data-label="Value" class="fw-700">{{ inc.total_value|floatformat:2 }}</td>
+            <td data-label="Status"><span class="status-badge status-{{ inc.status }}">{{ inc.status }}</span></td>
+            <td data-label="Action">
+              <a href="/approvals/{{ inc.pk }}/" class="btn btn-sm btn-outline-primary" style="font-size:11px">
+                <i class="bi bi-eye"></i>
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="ccp-card animate-fade-up">
+    <div class="ccp-card-body text-center py-5">
+      <i class="bi bi-inbox display-4 text-muted d-block mb-3"></i>
+      <div class="text-muted">No incidents submitted today.</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ═══════════════ STAFF VIEW ═══════════════ -->
+  {% else %}
+
+  <!-- Quick Action CTA -->
+  <div class="ccp-card mb-3 animate-fade-up" style="border-left: 4px solid var(--melcom-red)">
+    <div class="ccp-card-body d-flex align-items-center justify-content-between flex-wrap gap-3">
+      <div>
+        <div class="fw-700" style="font-size:1.1rem">Report Wastage Incident</div>
+        <div class="text-muted" style="font-size:13px">Submit any wastage, damage, or expiry incident for your department.</div>
+      </div>
+      <a href="/submit/" class="btn btn-melcom">
+        <i class="bi bi-plus-circle me-2"></i>Submit New Incident
+      </a>
+    </div>
+  </div>
+
+  <!-- Today's My Incidents -->
+  {% if my_today %}
+  <div class="ccp-card animate-fade-up">
+    <div class="ccp-card-header">
+      <i class="bi bi-clock-history"></i> My Today's Incidents
+      <a href="/my-incidents/" class="ms-auto btn btn-sm btn-outline-light" style="font-size:11px">
+        View All <i class="bi bi-arrow-right ms-1"></i>
+      </a>
+    </div>
+    <div class="table-responsive">
+      <table class="ccp-table">
+        <thead>
+          <tr>
+            <th>Incident No</th>
+            <th>Item</th>
+            <th>Qty</th>
+            <th>Value (GH₵)</th>
+            <th>Reason</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inc in my_today %}
+          <tr>
+            <td data-label="Incident No"><span class="font-mono fw-700 text-melcom-red" style="font-size:12px">{{ inc.incident_no }}</span></td>
+            <td data-label="Item">{{ inc.item_name|truncatechars:25 }}</td>
+            <td data-label="Qty">{{ inc.quantity }} {{ inc.uom }}</td>
+            <td data-label="Value" class="fw-700">{{ inc.total_value|floatformat:2 }}</td>
+            <td data-label="Reason"><span class="badge bg-secondary" style="font-size:10px">{{ inc.reason }}</span></td>
+            <td data-label="Status"><span class="status-badge status-{{ inc.status }}">{{ inc.status }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="ccp-card animate-fade-up">
+    <div class="ccp-card-body text-center py-5">
+      <i class="bi bi-check-circle display-4 text-success d-block mb-3"></i>
+      <div class="fw-600">No incidents submitted today.</div>
+      <div class="text-muted" style="font-size:13px">Use the button above to submit a wastage incident.</div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% endif %}
+
+</div>
+{% endblock %}

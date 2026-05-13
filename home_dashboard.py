@@ -25,7 +25,7 @@ st.set_page_config(
     page_title="Melcom Analytics Hub",
     page_icon="https://melcom.com/media/favicon/stores/1/faviconn_162_x_184px.jpg",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 # ===========================
@@ -33,211 +33,91 @@ st.set_page_config(
 # ===========================
 st.markdown("""
 <style>
-    /* Main background gradient */
-    .stApp {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+    * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+    .stApp { background: #0d1117; }
+    #MainMenu {visibility: hidden;} footer {visibility: hidden;} header {visibility: hidden;}
+    .stMarkdown p, .stMarkdown li { color: #c9d1d9; }
+    .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4 { color: #e6edf3 !important; }
+
+    /* Inputs */
+    .stTextInput > div > div > input {
+        background: #161b22 !important; border: 1px solid #30363d !important;
+        border-radius: 10px !important; color: #e6edf3 !important;
+        padding: 12px 16px !important; font-size: 15px !important;
     }
-    
-    /* Hide streamlit branding */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    
-    /* Make text more visible on purple background */
-    .stMarkdown, .stMarkdown p, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
-        color: white !important;
-        text-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+    .stTextInput > div > div > input:focus { border-color: #E31837 !important; box-shadow: 0 0 0 3px rgba(227,24,55,0.15) !important; }
+    .stTextInput label, .stSelectbox label, .stMultiSelect label {
+        color: #8b949e !important; font-size: 12px !important;
+        font-weight: 600 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important;
     }
-    
-    /* Tab content text visibility */
-    .stTabs [data-baseweb="tab-panel"] {
-        color: white;
-    }
-    
-    /* Tab labels - make them more visible */
-    .stTabs [data-baseweb="tab-list"] button {
-        background-color: rgba(255, 255, 255, 0.15) !important;
-        color: white !important;
-        font-weight: 600;
-        border-radius: 8px 8px 0 0;
-    }
-    
-    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
-        background-color: rgba(255, 255, 255, 0.95) !important;
-        color: #764ba2 !important;
-    }
-    
-    /* Info/Warning boxes - better contrast */
-    .stAlert {
-        background-color: rgba(255, 255, 255, 0.95) !important;
-        color: #2c3e50 !important;
-    }
-    
-    /* Selectbox and inputs - better visibility */
-    .stSelectbox label, .stTextInput label, .stTextArea label {
-        color: white !important;
-        font-weight: 600 !important;
-        text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
-    }
-    
-    /* Metric labels */
-    [data-testid="stMetricLabel"] {
-        color: white !important;
-        font-weight: 600 !important;
-        text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
-    }
-    
-    [data-testid="stMetricValue"] {
-        color: white !important;
-        font-weight: bold !important;
-        text-shadow: 1px 1px 3px rgba(0,0,0,0.4);
-    }
-    
-    /* Caption text */
-    .stCaptionContainer {
-        color: rgba(255, 255, 255, 0.9) !important;
-    }
-    
-    /* Help text */
-    .stHelp {
-        color: white !important;
-    }
-    
-    /* Dashboard card styling */
-    .dashboard-card {
-        background: white;
-        border-radius: 15px;
-        padding: 25px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-        margin: 15px 0;
-        height: 100%;
-    }
-    
-    .dashboard-card:hover {
-        transform: translateY(-10px);
-        box-shadow: 0 15px 40px rgba(0,0,0,0.4);
-    }
-    
-    /* Icon styling */
-    .dashboard-icon {
-        font-size: 60px;
-        margin-bottom: 15px;
-        display: block;
-        text-align: center;
-    }
-    
-    /* Title styling */
-    .dashboard-title {
-        font-size: 24px;
-        font-weight: bold;
-        color: #2c3e50;
-        margin: 15px 0 10px 0;
-        text-align: center;
-    }
-    
-    /* Description styling */
-    .dashboard-desc {
-        font-size: 14px;
-        color: #7f8c8d;
-        margin-bottom: 20px;
-        text-align: center;
-        min-height: 60px;
-    }
-    
-    /* Status badge */
-    .status-badge {
-        display: inline-block;
-        padding: 5px 15px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: bold;
-        margin: 10px 0;
-    }
-    
-    .status-online {
-        background: #27ae60;
-        color: white;
-    }
-    
-    .status-offline {
-        background: #e74c3c;
-        color: white;
-    }
-    
-    /* Header styling */
-    .main-header {
-        text-align: center;
-        color: white;
-        padding: 40px 0 30px 0;
-    }
-    
-    .main-title {
-        font-size: 56px;
-        font-weight: bold;
-        margin-bottom: 10px;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-    }
-    
-    .main-subtitle {
-        font-size: 22px;
-        opacity: 0.9;
-        margin-bottom: 20px;
-    }
-    
-    /* Button styling */
+    .stSelectbox > div > div { background: #161b22 !important; border-color: #30363d !important; border-radius: 10px !important; color: #e6edf3 !important; }
+    .stMultiSelect > div > div { background: #161b22 !important; border-color: #30363d !important; border-radius: 10px !important; }
+
+    /* Buttons */
     .stButton > button {
-        width: 100%;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        padding: 12px 24px;
-        font-size: 16px;
-        font-weight: bold;
-        border-radius: 8px;
-        transition: all 0.3s ease;
+        background: #21262d !important; color: #e6edf3 !important;
+        border: 1px solid #30363d !important; border-radius: 10px !important;
+        font-weight: 600 !important; transition: all 0.2s ease !important;
     }
-    
-    .stButton > button:hover {
-        background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
-        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-        transform: scale(1.05);
+    .stButton > button:hover { background: #30363d !important; border-color: #6e7681 !important; transform: translateY(-1px) !important; }
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #E31837 0%, #b01028 100%) !important;
+        border-color: transparent !important; color: white !important;
+        box-shadow: 0 4px 15px rgba(227,24,55,0.3) !important;
     }
-    
-    /* Info box */
-    .info-box {
-        background: rgba(255,255,255,0.95);
-        border-radius: 10px;
-        padding: 20px;
-        margin: 20px 0;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-    }
-    
-    /* Stats container */
-    .stats-container {
-        background: rgba(255,255,255,0.1);
-        border-radius: 10px;
-        padding: 20px;
-        margin: 20px 0;
-        backdrop-filter: blur(10px);
-    }
-    
-    .stat-item {
-        text-align: center;
-        color: white;
-    }
-    
-    .stat-value {
-        font-size: 36px;
-        font-weight: bold;
-        display: block;
-    }
-    
-    .stat-label {
-        font-size: 14px;
-        opacity: 0.8;
-        display: block;
-        margin-top: 5px;
-    }
+    .stButton > button[kind="primary"]:hover { box-shadow: 0 8px 25px rgba(227,24,55,0.5) !important; transform: translateY(-2px) !important; }
+
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] { gap: 6px; background: transparent !important; border-bottom: 1px solid #30363d; }
+    .stTabs [data-baseweb="tab-list"] button { background: transparent !important; color: #8b949e !important; border: none !important; border-radius: 0 !important; padding: 10px 20px !important; font-weight: 500 !important; border-bottom: 2px solid transparent !important; }
+    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #E31837 !important; border-bottom-color: #E31837 !important; font-weight: 700 !important; }
+    .stTabs [data-baseweb="tab-panel"] { padding-top: 20px; }
+
+    /* Metrics */
+    [data-testid="stMetricLabel"] { color: #8b949e !important; font-size: 11px !important; text-transform: uppercase !important; letter-spacing: 0.8px !important; }
+    [data-testid="stMetricValue"] { color: #e6edf3 !important; font-weight: 800 !important; }
+    [data-testid="stMetricDelta"] { font-size: 12px !important; }
+
+    /* Alerts */
+    .stAlert { border-radius: 10px !important; }
+    [data-testid="stNotification"] { background: #161b22 !important; border-radius: 10px !important; }
+
+    /* Checkbox */
+    .stCheckbox label { color: #e6edf3 !important; }
+    .stCheckbox label span { color: #e6edf3 !important; }
+
+    /* Caption */
+    .stCaptionContainer p { color: #6e7681 !important; }
+
+    /* Divider */
+    hr { border-color: #30363d !important; margin: 16px 0 !important; }
+
+    /* Dataframe */
+    .stDataFrame { border-radius: 12px !important; }
+    [data-testid="stDataFrame"] { background: #161b22 !important; }
+
+    /* Text area */
+    .stTextArea textarea { background: #161b22 !important; border-color: #30363d !important; color: #e6edf3 !important; border-radius: 10px !important; }
+
+    /* Select slider */
+    .stSelectSlider label { color: #8b949e !important; }
+
+    /* Progress */
+    .stProgress > div > div { background-color: #E31837 !important; }
+
+    /* Form */
+    [data-testid="stForm"] { background: #161b22; border: 1px solid #30363d; border-radius: 16px; padding: 16px; }
+
+    /* Expander */
+    .streamlit-expanderHeader { background: #161b22 !important; border-radius: 10px !important; color: #e6edf3 !important; }
+    .streamlit-expanderContent { background: #0d1117 !important; border-color: #30363d !important; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #0d1117; }
+    ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #6e7681; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -444,7 +324,8 @@ TABLE_CONFIGS = {
             {"name": "idx_sales_item_shop", "sql": "CREATE INDEX IF NOT EXISTS idx_sales_item_shop ON public.sales USING btree (item_code, shop_code)"},
             {"name": "idx_sales_shop", "sql": "CREATE INDEX IF NOT EXISTS idx_sales_shop ON public.sales USING btree (shop_code)"},
             {"name": "sales_pkey", "sql": "CREATE UNIQUE INDEX IF NOT EXISTS sales_pkey ON public.sales USING btree (shop_code, item_code, date_invoice)"}
-        ]
+        ],
+        "refresh_views": ["mv_sales_metrics", "mv_century_penetration", "mv_target_vs_achieve_century"]
     },
     "GEN_SIT": {
         "columns": ["shop_code", "item_code", "dt_trans_date", "nu_transit_qty"],
@@ -465,7 +346,7 @@ TABLE_CONFIGS = {
             {"name": "idx_sit_shop", "sql": "CREATE INDEX idx_sit_shop ON public.sit USING btree (shop_code)"},
             {"name": "sit_pkey", "sql": "CREATE UNIQUE INDEX sit_pkey ON public.sit USING btree (shop_code, item_code, dt_trans_date)"}
         ],
-        "refresh_views": ["mv_sit_summary", "mv_sales_metrics", "mv_century_penetration"]  # Refresh after upload
+        "refresh_views": ["mv_sit_summary", "mv_sales_metrics", "mv_century_penetration", "mv_target_vs_achieve_century"]
     },
     "GEN_whstock": {
         "columns": ["vc_item_code", "wh_code", "wh_name", "balance_qty"],
@@ -502,6 +383,7 @@ TABLE_CONFIGS = {
         "add_upload_date": True,  # Add upload_date column for tracking
         "parse_dates": ["DT_DOC_DATE", "LOADED_DATETIME", "LOADINGDATE", "DT_LOAD_DATE", "DT_MOD_DATE", "DT_INVOICE_DATE"],
         "prefer_month_first_dates": ["DT_DOC_DATE", "DT_MOD_DATE", "DT_INVOICE_DATE"],
+        "prefer_day_first_dates": ["LOADINGDATE", "DT_LOAD_DATE"],
         "type_conversions": {
             "NU_DOC_ID": "int",
             "NU_SELLING_PRICE": "float",
@@ -513,10 +395,7 @@ TABLE_CONFIGS = {
             {"name": "idx_staging_shop", "sql": "CREATE INDEX IF NOT EXISTS idx_staging_shop ON public.serial_no_dailydata_staging (vc_shop_code)"}
         ],
         "post_upload_sql": """
-            -- Drop and recreate main table to ensure no PRIMARY KEY (true append mode)
-            DROP TABLE IF EXISTS serial_no_dailydata CASCADE;
-            
-            CREATE TABLE serial_no_dailydata (
+            CREATE TABLE IF NOT EXISTS serial_no_dailydata (
                 vc_warehouse_desc VARCHAR(200),
                 vc_wh_code VARCHAR(10),
                 nu_doc_id BIGINT,
@@ -544,17 +423,12 @@ TABLE_CONFIGS = {
                 upload_date DATE DEFAULT CURRENT_DATE,
                 remarks2 VARCHAR(100)
             );
-            
-            -- Append all rows from staging to main table (no UPSERT - just INSERT)
-            -- remarks2 column auto-populated by database trigger (trg_update_remarks2)
-            INSERT INTO serial_no_dailydata 
-            SELECT * FROM serial_no_dailydata_staging;
-            
-            -- Verify refresh
-            SELECT 
-                (SELECT COUNT(*) FROM serial_no_dailydata_staging) as staging_count,
-                (SELECT COUNT(*) FROM serial_no_dailydata) as main_count,
-                (SELECT MAX(upload_date) FROM serial_no_dailydata) as last_refresh_date;
+            DELETE FROM serial_no_dailydata
+            WHERE loadingdate >= (SELECT MIN(loadingdate) FROM serial_no_dailydata_staging WHERE loadingdate IS NOT NULL)
+              AND loadingdate <= (SELECT MAX(loadingdate) FROM serial_no_dailydata_staging WHERE loadingdate IS NOT NULL)
+              AND (SELECT COUNT(*) FROM serial_no_dailydata_staging WHERE loadingdate IS NOT NULL) > 0;
+            INSERT INTO serial_no_dailydata SELECT * FROM serial_no_dailydata_staging;
+            SELECT (SELECT COUNT(*) FROM serial_no_dailydata_staging) as staging_count, (SELECT COUNT(*) FROM serial_no_dailydata) as main_count, (SELECT MIN(loadingdate) FROM serial_no_dailydata) as main_min_date, (SELECT MAX(loadingdate) FROM serial_no_dailydata) as main_max_date
         """
     },
     "whreceived_serialno": {
@@ -2618,7 +2492,8 @@ def delete_and_refetch_tables_from_date(
                     if invoices_triggers_disabled:
                         try:
                             with pg_conn.cursor() as cur:
-                                cur.execute("ALTER TABLE public.invoices ENABLE TRIGGER USER")
+                                cur.execute("ALTER TABLE public.invoices ENABLE " \
+                                "")
                             pg_conn.commit()
                             invoices_triggers_disabled = False
                             if status_container:
@@ -2712,6 +2587,43 @@ def delete_and_refetch_tables_from_date(
     return results
 
 
+def normalize_invoices_duplicate_flags(pg_config: dict, status_container=None) -> int:
+        """
+        Recompute invoices.duplicate flags from fullqrcode rules:
+        - first row per fullqrcode by min(id) => duplicate = 1
+        - remaining rows in same fullqrcode => duplicate = 0
+        - NULL/empty fullqrcode => duplicate = 1
+        Returns number of rows updated.
+        """
+        sql = """
+        WITH ranked AS (
+            SELECT
+                id,
+                CASE
+                    WHEN fullqrcode IS NULL OR TRIM(fullqrcode) = '' THEN 1
+                    WHEN ROW_NUMBER() OVER (PARTITION BY fullqrcode ORDER BY id) = 1 THEN 1
+                    ELSE 0
+                END AS correct_duplicate
+            FROM public.invoices
+        )
+        UPDATE public.invoices i
+        SET duplicate = r.correct_duplicate
+        FROM ranked r
+        WHERE i.id = r.id
+            AND i.duplicate IS DISTINCT FROM r.correct_duplicate;
+        """
+
+        with psycopg2.connect(**pg_config) as conn:
+                with conn.cursor() as cur:
+                        cur.execute(sql)
+                        updated_rows = cur.rowcount if cur.rowcount is not None else 0
+                conn.commit()
+
+        if status_container:
+                status_container.info(f"🧮 Recomputed invoices duplicate flags. Rows updated: {updated_rows:,}")
+        return updated_rows
+
+
 def _calculate_adaptive_batch_size(table_name: str, source_row_estimate: int, base_batch_size: int = 20000) -> int:
     """
     Calculate adaptive batch size to avoid MySQL timeout.
@@ -2763,6 +2675,262 @@ def _execute_mysql_query_with_retry(mysql_cur, sql: str, params: list = None, ta
     raise RuntimeError(f"MySQL query failed for {table_name} after {max_retries} attempts: {last_error}")
 
 
+def _sync_erpdata_from_csv(pg_config: dict, status_container=None) -> dict:
+    """
+    Sync ERPDATA from daily shopbillcount CSV files at \\\\10.10.0.30\\mis\\shopbillcount_YYYYMMDD.csv.
+
+    Logic:
+    1. Check MAX(invdate) in PostgreSQL erpdata (format YYYYMMDD varchar).
+    2. Build a list of dates from (max_date + 1 day) up to and including yesterday.
+    3. For each date try to open \\\\10.10.0.30\\mis\\shopbillcount_YYYYMMDD.csv.
+    4. Normalize column names to lowercase, compute a row hash for dedupe, and
+       INSERT … ON CONFLICT DO NOTHING into public.erpdata.
+    5. Returns a dict compatible with the per-table summary expected by the caller.
+    """
+    import os as _os
+    from datetime import date as _date, timedelta as _td
+
+    CSV_BASE_PATH = r"\\10.10.0.30\mis"
+    yesterday = _date.today() - _td(days=1)
+
+    start_time = datetime.now()
+    total_fetched = 0
+    total_inserted = 0
+    files_loaded: list = []
+    files_missing: list = []
+
+    pg_conn = psycopg2.connect(**pg_config)
+    try:
+        with pg_conn.cursor() as cur:
+            # ── Ensure erpdata table exists (minimal schema) ──────────────────
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS public.erpdata (
+                    invdate         TEXT,
+                    invno           TEXT,
+                    store_code      TEXT,
+                    cashier         TEXT,
+                    tillno          TEXT,
+                    amt             NUMERIC(18,4),
+                    _source_row_hash TEXT,
+                    _synced_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cur.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_erpdata_source_hash
+                ON public.erpdata (_source_row_hash)
+            """)
+            pg_conn.commit()
+
+            # ── Drop NOT NULL constraints on all data columns so CSV nulls don't fail ──
+            # (The table may have been created with stricter constraints previously)
+            # Use SAVEPOINT per-column so a failure on one doesn't abort the whole transaction
+            cur.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name   = 'erpdata'
+                  AND is_nullable  = 'NO'
+                  AND column_name NOT IN ('_source_row_hash', '_synced_at')
+            """)
+            not_null_cols = [r[0] for r in cur.fetchall()]
+            for nn_col in not_null_cols:
+                try:
+                    cur.execute("SAVEPOINT drop_nn")
+                    cur.execute(
+                        f"ALTER TABLE public.erpdata ALTER COLUMN {_quote_ident(nn_col)} DROP NOT NULL"
+                    )
+                    cur.execute("RELEASE SAVEPOINT drop_nn")
+                except Exception:
+                    cur.execute("ROLLBACK TO SAVEPOINT drop_nn")
+            if not_null_cols:
+                pg_conn.commit()
+
+            # ── Get max date already in PostgreSQL ─────────────────────────────
+            cur.execute("""
+                SELECT MAX(invdate)
+                FROM public.erpdata
+                WHERE invdate ~ '^[0-9]{8}$'
+            """)
+            pg_max = cur.fetchone()[0]  # e.g. '20260416' or None
+
+        if pg_max:
+            max_dt = datetime.strptime(str(pg_max)[:8], '%Y%m%d').date()
+            start_date = max_dt + _td(days=1)
+        else:
+            start_date = yesterday  # full load if table is empty
+
+        if start_date > yesterday:
+            if status_container:
+                status_container.info(
+                    f"✅ ERPDATA already up to date (PostgreSQL max invdate: {pg_max})"
+                )
+            return {
+                'source_table': 'ERPDATA', 'target_table': 'erpdata',
+                'strategy': 'csv_file_append',
+                'fetched_rows': 0, 'inserted_rows': 0, 'duplicate_rows': 0,
+                'deleted_rows': 0, 'source_total_rows': 0, 'target_total_rows': 0,
+                'sync_note': f'Already up to date (max date: {pg_max})',
+                'status': 'success', 'error': None,
+                'started_at': start_time, 'finished_at': datetime.now(),
+            }
+
+        dates_to_load = []
+        d = start_date
+        while d <= yesterday:
+            dates_to_load.append(d)
+            d += _td(days=1)
+
+        if status_container:
+            status_container.info(
+                f"📅 ERPDATA: will attempt {len(dates_to_load)} CSV file(s) "
+                f"({start_date} → {yesterday})"
+            )
+
+        # ── Detect actual PG columns (beyond the minimal schema) ─────────────
+        with pg_conn.cursor() as cur:
+            cur.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'erpdata'
+                  AND column_name NOT IN ('_source_row_hash', '_synced_at')
+                ORDER BY ordinal_position
+            """)
+            pg_data_cols = [r[0] for r in cur.fetchall()]
+
+        for target_date in dates_to_load:
+            date_str = target_date.strftime('%Y%m%d')
+            csv_path = _os.path.join(CSV_BASE_PATH, f"shopbillcount_{date_str}.csv")
+
+            if not _os.path.exists(csv_path):
+                files_missing.append(f"shopbillcount_{date_str}.csv")
+                if status_container:
+                    status_container.warning(
+                        f"⚠️ shopbillcount_{date_str}.csv not found at {CSV_BASE_PATH} — skipping"
+                    )
+                continue
+
+            try:
+                try:
+                    df = pd.read_csv(csv_path, dtype=str, encoding='utf-8')
+                except UnicodeDecodeError:
+                    df = pd.read_csv(csv_path, dtype=str, encoding='latin1')
+
+                # Normalize CSV headers to lowercase, strip whitespace
+                df.columns = [c.strip().lower() for c in df.columns]
+
+                # ── Ensure erpdata table has all CSV columns ──────────────────
+                with pg_conn.cursor() as cur:
+                    for col in df.columns:
+                        if col not in pg_data_cols and col not in ('_source_row_hash', '_synced_at'):
+                            try:
+                                cur.execute(
+                                    f"ALTER TABLE public.erpdata "
+                                    f"ADD COLUMN IF NOT EXISTS {_quote_ident(col)} TEXT"
+                                )
+                                pg_conn.commit()
+                                pg_data_cols.append(col)
+                            except Exception:
+                                pg_conn.rollback()
+
+                # Columns present in both CSV and PG (excluding meta cols)
+                meta_cols = {'_source_row_hash', '_synced_at'}
+                use_cols = [c for c in df.columns if c in pg_data_cols and c not in meta_cols]
+
+                if not use_cols:
+                    if status_container:
+                        status_container.warning(
+                            f"⚠️ shopbillcount_{date_str}.csv: no matching columns found — skipping"
+                        )
+                    continue
+
+                df_insert = df[use_cols].copy()
+                total_fetched += len(df_insert)
+
+                insert_col_sql = ', '.join([_quote_ident(c) for c in use_cols] + ['_source_row_hash'])
+                insert_sql = (
+                    f"INSERT INTO public.erpdata ({insert_col_sql}) VALUES %s "
+                    f"ON CONFLICT (_source_row_hash) DO NOTHING"
+                )
+
+                value_rows = []
+                for _, row in df_insert.iterrows():
+                    normalized = {c: (None if pd.isnull(row[c]) else str(row[c]).strip() or None) for c in use_cols}
+                    # Skip rows where every data column is null/empty (blank CSV rows)
+                    if all(v is None for v in normalized.values()):
+                        continue
+                    row_hash = hashlib.md5(
+                        _serialize_row_for_hash(normalized, use_cols).encode('utf-8', errors='ignore')
+                    ).hexdigest()
+                    value_rows.append(tuple([normalized.get(c) for c in use_cols] + [row_hash]))
+
+                with pg_conn.cursor() as cur:
+                    execute_values(cur, insert_sql, value_rows, page_size=5000)
+                    inserted = cur.rowcount if cur.rowcount is not None else 0
+                    total_inserted += inserted
+
+                pg_conn.commit()
+                files_loaded.append(f"shopbillcount_{date_str}.csv ({len(df_insert):,} rows, {inserted:,} inserted)")
+
+                if status_container:
+                    status_container.info(
+                        f"✅ shopbillcount_{date_str}.csv — "
+                        f"fetched {len(df_insert):,} / inserted {inserted:,}"
+                    )
+
+            except Exception as file_err:
+                pg_conn.rollback()
+                files_missing.append(f"shopbillcount_{date_str}.csv (error: {file_err})")
+                if status_container:
+                    status_container.error(
+                        f"❌ Error loading shopbillcount_{date_str}.csv: {file_err}"
+                    )
+
+        # ── Final row count ───────────────────────────────────────────────────
+        with pg_conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM public.erpdata")
+            target_total = cur.fetchone()[0]
+
+        sync_note = (
+            f"Loaded {len(files_loaded)} file(s) from {CSV_BASE_PATH}. "
+            f"Skipped/missing: {len(files_missing)}. "
+            f"Target now {target_total:,} rows."
+        )
+        if status_container:
+            status_container.success(
+                f"✅ ERPDATA CSV sync done — "
+                f"fetched {total_fetched:,} / inserted {total_inserted:,} / "
+                f"skipped {len(files_missing)} file(s)"
+            )
+
+        return {
+            'source_table': 'ERPDATA', 'target_table': 'erpdata',
+            'strategy': 'csv_file_append',
+            'fetched_rows': total_fetched, 'inserted_rows': total_inserted,
+            'duplicate_rows': max(total_fetched - total_inserted, 0),
+            'deleted_rows': 0, 'source_total_rows': total_fetched,
+            'target_total_rows': target_total,
+            'sync_note': sync_note,
+            'status': 'success', 'error': None,
+            'started_at': start_time, 'finished_at': datetime.now(),
+        }
+
+    except Exception as e:
+        pg_conn.rollback()
+        if status_container:
+            status_container.error(f"❌ ERPDATA CSV sync failed: {e}")
+        return {
+            'source_table': 'ERPDATA', 'target_table': 'erpdata',
+            'strategy': 'csv_file_append',
+            'fetched_rows': total_fetched, 'inserted_rows': total_inserted,
+            'duplicate_rows': 0, 'deleted_rows': 0,
+            'source_total_rows': 0, 'target_total_rows': 0,
+            'sync_note': str(e), 'status': 'failed', 'error': str(e),
+            'started_at': start_time, 'finished_at': datetime.now(),
+        }
+    finally:
+        pg_conn.close()
+
+
 def sync_mysql_tables_to_postgres(mysql_config: dict, pg_config: dict, source_tables: list, status_container=None, batch_size: int = 20000):
     """
     Sync selected MySQL tables into PostgreSQL with:
@@ -2770,6 +2938,7 @@ def sync_mysql_tables_to_postgres(mysql_config: dict, pg_config: dict, source_ta
     - incremental strategy using numeric PK or datetime cursor when possible
     - hash-based dedupe fallback when no suitable cursor
     - persisted sync state + audit logs
+    - ERPDATA is sourced from \\\\10.10.0.30\\mis\\shopbillcount_YYYYMMDD.csv (not MySQL)
     """
     try:
         try:
@@ -2856,6 +3025,18 @@ def sync_mysql_tables_to_postgres(mysql_config: dict, pg_config: dict, source_ta
             }
 
             try:
+                # ── ERPDATA: read from daily CSV file, not MySQL ──────────────
+                if source_table.upper() == 'ERPDATA':
+                    csv_result = _sync_erpdata_from_csv(
+                        pg_config=pg_config,
+                        status_container=status_container,
+                    )
+                    # Merge CSV result into table_status and append to summary.
+                    table_status.update(csv_result)
+                    table_status['finished_at'] = datetime.now()
+                    summary.append(table_status)
+                    continue  # skip MySQL path entirely for ERPDATA
+
                 target_table = source_table.lower()
                 if status_container:
                     status_container.info(f"🔎 Inspecting source table `{source_table}`...")
@@ -3017,16 +3198,16 @@ def sync_mysql_tables_to_postgres(mysql_config: dict, pg_config: dict, source_ta
 
                 if target_table == 'invoices':
                     try:
-                        pg_cur.execute("ALTER TABLE public.invoices DISABLE TRIGGER USER")
+                        pg_cur.execute("ALTER TABLE public.invoices ENABLE TRIGGER USER")
                         pg_conn.commit()
                         invoices_triggers_disabled = True
                         if status_container:
-                            status_container.info("⏸️ `invoices`: user triggers disabled for bulk sync")
+                            status_container.info("▶️ `invoices`: user triggers ENABLED before bulk sync")
                     except Exception as trigger_err:
                         pg_conn.rollback()
                         if status_container:
                             status_container.warning(
-                                f"⚠️ `invoices`: could not disable user triggers ({trigger_err}). Continuing sync."
+                                f"⚠️ `invoices`: could not enable user triggers ({trigger_err}). Continuing sync."
                             )
 
                 # INVOICES/invoices_manager can stall before first fetch when MySQL scans by invdate.
@@ -3313,15 +3494,15 @@ def sync_mysql_tables_to_postgres(mysql_config: dict, pg_config: dict, source_ta
             finally:
                 if invoices_triggers_disabled:
                     try:
-                        pg_cur.execute("ALTER TABLE public.invoices ENABLE TRIGGER USER")
+                        pg_cur.execute("ALTER TABLE public.invoices DISABLE TRIGGER USER")
                         pg_conn.commit()
                         if status_container:
-                            status_container.info("▶️ `invoices`: user triggers re-enabled after sync")
+                            status_container.info("⏸️ `invoices`: user triggers DISABLED after sync")
                     except Exception as trigger_err:
                         pg_conn.rollback()
                         table_status['status'] = 'failed'
                         existing_error = table_status.get('error')
-                        trigger_error_text = f"Failed to re-enable invoices triggers: {trigger_err}"
+                        trigger_error_text = f"Failed to disable invoices triggers after sync: {trigger_err}"
                         table_status['error'] = (
                             f"{existing_error}; {trigger_error_text}" if existing_error else trigger_error_text
                         )
@@ -4039,11 +4220,152 @@ def repair_invoices_positive_delta_groups(mysql_config: dict, pg_config: dict, p
     return result
 
 # ===========================
+# AUTH SYSTEM
+# ===========================
+
+ADMIN_USERNAME = "admin"
+_ADMIN_PW_HASH = hashlib.sha256("Melcom@Admin2024".encode()).hexdigest()
+
+_AUTH_DB = {
+    'host': 'localhost', 'port': 3307, 'user': 'postgres',
+    'password': 'hello', 'database': 'salesdata'
+}
+
+def _auth_conn():
+    return psycopg2.connect(**_AUTH_DB)
+
+def _setup_auth_tables():
+    try:
+        conn = _auth_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS portal_users (
+                username    VARCHAR(50) PRIMARY KEY,
+                display_name VARCHAR(100) NOT NULL,
+                password_hash VARCHAR(64) NOT NULL,
+                is_admin    BOOLEAN DEFAULT FALSE,
+                created_at  TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS portal_access (
+                username      VARCHAR(50) REFERENCES portal_users(username) ON DELETE CASCADE,
+                dashboard_id  VARCHAR(50) NOT NULL,
+                granted_at    TIMESTAMP DEFAULT NOW(),
+                PRIMARY KEY (username, dashboard_id)
+            )
+        """)
+        conn.commit()
+        cur.close(); conn.close()
+    except Exception:
+        pass
+
+def _hash_pw(pw: str) -> str:
+    return hashlib.sha256(pw.encode()).hexdigest()
+
+def verify_login(username: str, password: str):
+    """Returns (display_name, is_admin) tuple or None if invalid."""
+    if username.strip().lower() == ADMIN_USERNAME and _hash_pw(password) == _ADMIN_PW_HASH:
+        return ("Administrator", True)
+    try:
+        conn = _auth_conn()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT display_name, is_admin FROM portal_users WHERE username=%s AND password_hash=%s",
+            (username.strip().lower(), _hash_pw(password))
+        )
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        if row:
+            return (row[0], row[1])
+    except Exception:
+        pass
+    return None
+
+def get_all_users():
+    try:
+        conn = _auth_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT username, display_name, is_admin, created_at FROM portal_users ORDER BY created_at DESC")
+        rows = cur.fetchall()
+        cur.close(); conn.close()
+        return rows
+    except Exception:
+        return []
+
+def add_user(username: str, display_name: str, password: str, is_admin: bool = False):
+    conn = _auth_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO portal_users (username, display_name, password_hash, is_admin) VALUES (%s,%s,%s,%s) ON CONFLICT(username) DO UPDATE SET display_name=EXCLUDED.display_name, password_hash=EXCLUDED.password_hash, is_admin=EXCLUDED.is_admin",
+        (username.strip().lower(), display_name.strip(), _hash_pw(password), is_admin)
+    )
+    conn.commit(); cur.close(); conn.close()
+
+def delete_user(username: str):
+    conn = _auth_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM portal_users WHERE username=%s", (username,))
+    conn.commit(); cur.close(); conn.close()
+
+def change_password(username: str, old_password: str, new_password: str) -> tuple[bool, str]:
+    """Returns (success, message)."""
+    if username.strip().lower() == ADMIN_USERNAME:
+        if _hash_pw(old_password) != _ADMIN_PW_HASH:
+            return False, "Current password is incorrect."
+        return False, "Admin password can only be changed in the source code."
+    try:
+        conn = _auth_conn()
+        cur  = conn.cursor()
+        cur.execute(
+            "SELECT 1 FROM portal_users WHERE username=%s AND password_hash=%s",
+            (username.strip().lower(), _hash_pw(old_password))
+        )
+        if not cur.fetchone():
+            cur.close(); conn.close()
+            return False, "Current password is incorrect."
+        cur.execute(
+            "UPDATE portal_users SET password_hash=%s WHERE username=%s",
+            (_hash_pw(new_password), username.strip().lower())
+        )
+        conn.commit(); cur.close(); conn.close()
+        return True, "Password changed successfully."
+    except Exception as e:
+        return False, f"Database error: {e}"
+
+def get_user_access(username: str) -> set:
+    try:
+        conn = _auth_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT dashboard_id FROM portal_access WHERE username=%s", (username,))
+        ids = {r[0] for r in cur.fetchall()}
+        cur.close(); conn.close()
+        return ids
+    except Exception:
+        return set()
+
+def set_user_access(username: str, dashboard_ids: list):
+    conn = _auth_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM portal_access WHERE username=%s", (username,))
+    if dashboard_ids:
+        execute_values(cur, "INSERT INTO portal_access (username, dashboard_id) VALUES %s",
+                       [(username, did) for did in dashboard_ids])
+    conn.commit(); cur.close(); conn.close()
+
+def get_accessible_dashboards(username: str, is_admin: bool):
+    if is_admin:
+        return DASHBOARDS
+    accessible = get_user_access(username)
+    return [d for d in DASHBOARDS if d.get("id") in accessible]
+
+# ===========================
 # DASHBOARD CONFIGURATION
 # ===========================
 
 DASHBOARDS = [
     {
+        "id": "melcom_star",
         "name": "MELCOM STAR\n(Serial Tracking & Reporting)",
         "icon": "📦",
         "description": "Supply chain funnel for serialized items. Track loaded, offloaded, and sold items with vehicle analysis.",
@@ -4053,6 +4375,7 @@ DASHBOARDS = [
         "features": ["Vehicle Tracking", "Serial Funnel", "Status Analysis"]
     },
     {
+        "id": "kpi_dashboard",
         "name": "KPI Dashboard",
         "icon": "📊",
         "description": "Multi-page sales analytics with year-over-year comparisons, department analysis, and shop rankings.",
@@ -4062,6 +4385,7 @@ DASHBOARDS = [
         "features": ["Sales Analytics", "YoY Comparison", "Shop Rankings"]
     },
     {
+        "id": "stst",
         "name": "STST",
         "icon": "📋",
         "description": "Stock transfer recommendations via materialized views. Priority shop allocation with expiry checks.",
@@ -4071,6 +4395,7 @@ DASHBOARDS = [
         "features": ["Stock Transfer", "FEFO Logic", "Priority Allocation"]
     },
     {
+        "id": "barcode_matcher",
         "name": "Barcode Matcher",
         "icon": "🔍",
         "description": "Upload barcodes to match with item codes. Search 229K+ barcodes, add new mappings, track history.",
@@ -4080,6 +4405,7 @@ DASHBOARDS = [
         "features": ["Barcode Search", "Bulk Matching", "Master Update"]
     },
     {
+        "id": "century_penetration",
         "name": "Century Penetration",
         "icon": "🎯",
         "description": "Century brand penetration analysis across shops and regions with performance tracking.",
@@ -4089,6 +4415,7 @@ DASHBOARDS = [
         "features": ["Brand Analysis", "Penetration Rate", "Regional Comparison"]
     },
     {
+        "id": "loading_offloading",
         "name": "Loading vs Offloading",
         "icon": "🚚",
         "description": "Warehouse loading versus shop offloading reconciliation with quantity and value difference analysis.",
@@ -4099,6 +4426,46 @@ DASHBOARDS = [
         "status_port": 8522,
         "color": "#16a085",
         "features": ["Loading Reconciliation", "Offloading Variance", "Shop Difference Analysis"]
+    },
+    {
+        "id": "invoice_scanning",
+        "name": "Invoice Scanning",
+        "icon": "🧾",
+        "description": "Track bill scanning compliance across all shops. Monitor duplicate bills, alert errors, and daily scan performance.",
+        "file": "invoicescanning/consumable_till_dashboard.py",
+        "port": 8508,
+        "color": "#2980b9",
+        "features": ["Bill Scan Tracking", "Duplicate Detection", "Alert Error Analysis"]
+    },
+    {
+        "id": "cost_control",
+        "name": "Cost Control Portal",
+        "icon": "💰",
+        "description": "Monitor wastage, cost entries, and departmental cost control across all Melcom branches.",
+        "file": "cost_control_portal/manage.py",
+        "port": 8507,
+        "color": "#27ae60",
+        "features": ["Wastage Tracking", "Cost Entry", "Branch Cost Control"]
+    },
+    {
+        "id": "pi_dashboard",
+        "name": "PI Dashboard",
+        "icon": "📈",
+        "description": "Physical inventory performance dashboard. Track inventory counts, variances, and shop-wise PI progress.",
+        "file": "PI_Dashboard/pidashboard.py",
+        "port": 8509,
+        "color": "#8e44ad",
+        "features": ["PI Progress", "Variance Analysis", "Shop Performance"]
+    },
+    {
+        "id": "serial_tracker",
+        "name": "Serial Number Tracking",
+        "icon": "🔢",
+        "description": "Track serialized items from warehouse loading through shop receipt to customer sale. Full serial lifecycle visibility.",
+        "file": "SerialNoReport/serial_tracker_dashboard_new.py",
+        "port": 8514,
+        "color": "#d35400",
+        "features": ["Serial Lifecycle", "Shop Receipt", "Sale Tracking"]
     }
 ]
 
@@ -4106,1908 +4473,2017 @@ DASHBOARDS = [
 # MAIN PAGE
 # ===========================
 
-# Page title
-st.markdown('<h1 style="text-align: center; color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);"><img src="https://melcom.com/media/favicon/stores/1/faviconn_162_x_184px.jpg" width="40" style="vertical-align: middle; margin-right: 10px;"> Melcom Analytics Hub</h1>', unsafe_allow_html=True)
-st.markdown('<p style="text-align: center; color: white; font-size: 18px; opacity: 0.9;">Centralized Dashboard Portal & Data Management</p>', unsafe_allow_html=True)
-st.markdown("<br>", unsafe_allow_html=True)
+# ── Session state bootstrap ──────────────────────────────────────────────────
+for _k, _v in {
+    "authenticated": False, "username": None,
+    "is_admin": False, "display_name": None,
+    "portal_view": "home",  # home | admin | upload | indexmgr
+    "admin_subtab": "users",
+}.items():
+    if _k not in st.session_state:
+        st.session_state[_k] = _v
 
-# ===========================
-# TABS
-# ===========================
-tab1, tab2, tab3 = st.tabs(["📊 Dashboards", "📤 Data Upload", "🔧 Index Manager"])
+# ── DB setup ─────────────────────────────────────────────────────────────────
+_setup_auth_tables()
 
-# ===========================
-# TAB 1: DASHBOARDS
-# ===========================
-with tab1:
-    # Get IPv4 address
-    ipv4 = get_ipv4_address()
-    barcode_count = get_database_stats()
-
-    # Check status for all dashboards
-    dashboard_status = {
-        d['name']: check_dashboard_status(
-            d.get('status_port', d['port']),
-            d.get('status_host', 'localhost')
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def _navbar():
+    cols = st.columns([1, 3, 1])
+    with cols[0]:
+        st.markdown(
+            '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;">'
+            '<img src="https://melcom.com/media/favicon/stores/1/faviconn_162_x_184px.jpg" width="32" style="border-radius:6px;">'
+            '<span style="font-size:18px;font-weight:800;color:#e6edf3;letter-spacing:-0.3px;">Melcom Analytics Hub</span>'
+            '</div>',
+            unsafe_allow_html=True
         )
-        for d in DASHBOARDS
+    with cols[2]:
+        badge = (
+            '<span style="background:rgba(255,215,0,0.15);border:1px solid rgba(255,215,0,0.4);'
+            'color:#ffd700;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;margin-right:8px;">ADMIN</span>'
+            if st.session_state.is_admin else ""
+        )
+        st.markdown(
+            f'<div style="text-align:right;padding:8px 0;">'
+            f'{badge}'
+            f'<span style="color:#8b949e;font-size:13px;">👤 {st.session_state.display_name}</span>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+        if st.button("Sign Out", key="signout_btn"):
+            for k in ["authenticated","username","is_admin","display_name","portal_view"]:
+                st.session_state[k] = False if k == "authenticated" else None
+            st.session_state.portal_view = "home"
+            st.rerun()
+    st.markdown('<hr style="margin:0 0 20px 0;">', unsafe_allow_html=True)
+
+def _sidebar_nav():
+    with st.sidebar:
+        st.markdown(
+            '<p style="color:#8b949e;font-size:11px;font-weight:700;text-transform:uppercase;'
+            'letter-spacing:1px;margin-bottom:12px;">Navigation</p>',
+            unsafe_allow_html=True
+        )
+        nav_items = [("🏠", "Home", "home"), ("📤", "Upload Data", "upload"), ("🔧", "Index Manager", "indexmgr"), ("🔑", "Change Password", "change_password")]
+        if st.session_state.is_admin:
+            nav_items.insert(1, ("⚙️", "Admin Panel", "admin"))
+        for icon, label, view in nav_items:
+            is_active = st.session_state.portal_view == view
+            btn_style = (
+                "background:linear-gradient(135deg,#E31837,#b01028);color:white;border:none;"
+                if is_active else
+                "background:#21262d;color:#c9d1d9;border:1px solid #30363d;"
+            )
+            if st.button(f"{icon}  {label}", key=f"nav_{view}", use_container_width=True):
+                st.session_state.portal_view = view
+                st.rerun()
+
+
+# ── Login Page ────────────────────────────────────────────────────────────────
+def _render_login():
+    if 'login_mode' not in st.session_state:
+        st.session_state.login_mode = 'signin'   # 'signin' | 'change_pw'
+
+    _, col, _ = st.columns([1, 1.2, 1])
+    with col:
+        st.markdown("<div style='height:60px'></div>", unsafe_allow_html=True)
+        st.markdown(
+            '<div style="text-align:center;margin-bottom:8px;">'
+            '<img src="https://melcom.com/media/favicon/stores/1/faviconn_162_x_184px.jpg" width="64" style="border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.5);">'
+            '</div>',
+            unsafe_allow_html=True
+        )
+
+        # ── SIGN IN mode ──────────────────────────────────────────────────────
+        if st.session_state.login_mode == 'signin':
+            st.markdown(
+                '<h1 style="text-align:center;color:#e6edf3;font-size:28px;font-weight:800;margin:16px 0 4px 0;">Welcome Back</h1>'
+                '<p style="text-align:center;color:#8b949e;font-size:14px;margin-bottom:32px;">Sign in to Melcom Analytics Hub</p>',
+                unsafe_allow_html=True
+            )
+            with st.container():
+                username_in = st.text_input("Username", placeholder="Enter your username", key="login_user")
+                password_in = st.text_input("Password", type="password", placeholder="Enter your password", key="login_pass")
+                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+                login_btn = st.button("Sign In →", type="primary", use_container_width=True, key="login_btn")
+                if login_btn:
+                    if not username_in or not password_in:
+                        st.error("Please enter both username and password.")
+                    else:
+                        result = verify_login(username_in, password_in)
+                        if result:
+                            display_name, is_admin = result
+                            st.session_state.authenticated = True
+                            st.session_state.username = username_in.strip().lower()
+                            st.session_state.is_admin = is_admin
+                            st.session_state.display_name = display_name
+                            st.session_state.portal_view = "home"
+                            st.rerun()
+                        else:
+                            st.error("Invalid username or password. Please try again.")
+
+            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+            st.markdown(
+                '<p style="text-align:center;color:#6e7681;font-size:12px;">'
+                'Forgot or want to change your password?</p>',
+                unsafe_allow_html=True
+            )
+            if st.button("🔑  Change Password", use_container_width=True, key="goto_change_pw"):
+                st.session_state.login_mode = 'change_pw'
+                st.rerun()
+
+        # ── CHANGE PASSWORD mode ──────────────────────────────────────────────
+        else:
+            st.markdown(
+                '<h1 style="text-align:center;color:#e6edf3;font-size:24px;font-weight:800;margin:16px 0 4px 0;">Change Password</h1>'
+                '<p style="text-align:center;color:#8b949e;font-size:14px;margin-bottom:32px;">Enter your current password to set a new one</p>',
+                unsafe_allow_html=True
+            )
+            with st.form("login_change_pw_form", clear_on_submit=True):
+                cp_user   = st.text_input("Username",         placeholder="Your username",        key="cp_user")
+                cp_old    = st.text_input("Current Password", type="password",
+                                          placeholder="Your current password", key="cp_old")
+                cp_new    = st.text_input("New Password",     type="password",
+                                          placeholder="New password (min 6 chars)", key="cp_new")
+                cp_conf   = st.text_input("Confirm Password", type="password",
+                                          placeholder="Re-enter new password",     key="cp_conf")
+                cp_submit = st.form_submit_button("Update Password", type="primary", use_container_width=True)
+
+            if cp_submit:
+                if not all([cp_user, cp_old, cp_new, cp_conf]):
+                    st.error("All fields are required.")
+                elif cp_new != cp_conf:
+                    st.error("New passwords do not match.")
+                elif len(cp_new) < 6:
+                    st.error("New password must be at least 6 characters.")
+                else:
+                    ok, msg = change_password(cp_user.strip().lower(), cp_old, cp_new)
+                    if ok:
+                        st.success(f"✓ {msg}  Please sign in with your new password.")
+                        st.session_state.login_mode = 'signin'
+                        st.rerun()
+                    else:
+                        st.error(msg)
+
+            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+            if st.button("← Back to Sign In", use_container_width=True, key="back_to_login"):
+                st.session_state.login_mode = 'signin'
+                st.rerun()
+
+        st.markdown(
+            '<p style="text-align:center;color:#6e7681;font-size:12px;margin-top:24px;">'
+            '🔒 Secure Access · Melcom Group Limited</p>',
+            unsafe_allow_html=True
+        )
+
+
+# ── Dashboard Portal ─────────────────────────────────────────────────────────
+def _render_portal():
+    ipv4 = get_ipv4_address()
+    my_dashboards = get_accessible_dashboards(st.session_state.username, st.session_state.is_admin)
+
+    if not my_dashboards:
+        st.markdown(
+            '<div style="text-align:center;padding:80px 20px;">'
+            '<div style="font-size:64px;margin-bottom:16px;">🔒</div>'
+            '<h2 style="color:#e6edf3;">No Dashboards Assigned</h2>'
+            '<p style="color:#8b949e;max-width:400px;margin:0 auto;">You don\'t have access to any dashboards yet. Please contact your administrator.</p>'
+            '</div>',
+            unsafe_allow_html=True
+        )
+        return
+
+    # Status check
+    status_map = {
+        d["name"]: check_dashboard_status(d.get("status_port", d["port"]), d.get("status_host", "localhost"))
+        for d in my_dashboards
     }
-    online_count = sum(dashboard_status.values())
+    online_count = sum(status_map.values())
+    total = len(my_dashboards)
 
-    # Build dashboard cards HTML
-    dashboard_cards_html = ""
-    for dashboard in DASHBOARDS:
-        is_online = dashboard_status[dashboard['name']]
-        status_class = "online" if is_online else "offline"
-        status_text = "🟢 Online" if is_online else "🔴 Offline"
-        url = dashboard.get('url') or f"http://{ipv4}:{dashboard['port']}"
-        
-        dashboard_cards_html += f"""
-        <div class="dashboard-card" data-aos="fade-up">
-            <div class="card-icon">{dashboard['icon']}</div>
-            <h3 class="card-title">{dashboard['name']}</h3>
-            <p class="card-description">{dashboard['description']}</p>
-            
-            <div class="status-badge {status_class}">
-                {status_text}
+    # Welcome banner
+    hour = datetime.now().hour
+    greeting = "Good morning" if hour < 12 else ("Good afternoon" if hour < 17 else "Good evening")
+    st.markdown(
+        f'<div style="background:linear-gradient(135deg,rgba(227,24,55,0.12) 0%,rgba(118,75,162,0.12) 100%);'
+        f'border:1px solid rgba(227,24,55,0.2);border-radius:16px;padding:24px 32px;margin-bottom:24px;">'
+        f'<div style="font-size:22px;font-weight:700;color:#e6edf3;">{greeting}, {st.session_state.display_name} 👋</div>'
+        f'<div style="font-size:14px;color:#8b949e;margin-top:4px;">Here are your analytics dashboards</div>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
+
+    # Stats row
+    s1, s2, s3 = st.columns(3)
+    with s1:
+        st.markdown(
+            f'<div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px;text-align:center;">'
+            f'<div style="font-size:32px;font-weight:800;color:#e6edf3;">{total}</div>'
+            f'<div style="font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:0.8px;margin-top:4px;">Your Dashboards</div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+    with s2:
+        st.markdown(
+            f'<div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px;text-align:center;">'
+            f'<div style="font-size:32px;font-weight:800;color:#3fb950;">{online_count}</div>'
+            f'<div style="font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:0.8px;margin-top:4px;">Currently Online</div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+    with s3:
+        offline = total - online_count
+        st.markdown(
+            f'<div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px;text-align:center;">'
+            f'<div style="font-size:32px;font-weight:800;color:#{"f85149" if offline else "8b949e"}">{offline}</div>'
+            f'<div style="font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:0.8px;margin-top:4px;">Offline</div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+    # Dashboard cards (rendered as HTML component for rich hover effects)
+    cards_html = ""
+    for d in my_dashboards:
+        is_online = status_map.get(d["name"], False)
+        url = d.get("url") or f"http://{ipv4}:{d['port']}"
+        features_html = "".join(f'<span class="feature-chip">{f}</span>' for f in d.get("features", []))
+        status_color = "#3fb950" if is_online else "#f85149"
+        status_dot = "🟢" if is_online else "🔴"
+        status_label = "Online" if is_online else "Offline"
+        btn_class = "launch-btn-active" if is_online else "launch-btn-inactive"
+        btn_label = "Open Dashboard →" if is_online else "Dashboard Offline"
+        onclick_val = f"window.open('{url}', '_blank')" if is_online else ""
+        a_onclick = 'onclick="event.stopPropagation()"' if is_online else 'onclick="return false;"'
+        card_name_html = d['name'].replace('\n', '<br>')
+        cards_html += f"""
+        <div class="dash-card" onclick="{onclick_val}">
+            <div class="card-header">
+                <span class="card-icon">{d['icon']}</span>
+                <span class="status-dot" style="color:{status_color};">{status_dot} {status_label}</span>
             </div>
-            
-            <div class="features">
-                <strong>Features:</strong>
-                <ul>
-                    {''.join([f'<li>{feature}</li>' for feature in dashboard['features']])}
-                </ul>
-            </div>
-            
-            <div class="url-box">
-                <code>{url}</code>
-            </div>
-            
-            <a href="{url}" target="_blank" class="launch-btn {'disabled' if not is_online else ''}">
-                {'🚀 Launch Dashboard' if is_online else '⚠️ Start Dashboard First'}
+            <h3 class="card-name">{card_name_html}</h3>
+            <p class="card-desc">{d['description']}</p>
+            <div class="feature-row">{features_html}</div>
+            <a href="{url}" target="_blank" class="{btn_class}" {a_onclick}>
+                {btn_label}
             </a>
-        </div>
-        """
+        </div>"""
 
-    # Render full HTML page with animations
     components.html(f"""
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Melcom Analytics Hub</title>
-    <link rel="stylesheet" href="https://unpkg.com/aos@2.3.1/dist/aos.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
-        * {{
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }}
-        
-        body {{
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            overflow-x: hidden;
-        }}
-        
-        /* Animated Background Particles */
-        .particles {{
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            z-index: 0;
-            pointer-events: none;
-        }}
-        
-        .particle {{
-            position: absolute;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 50%;
-            animation: float 20s infinite ease-in-out;
-        }}
-        
-        @keyframes float {{
-            0%, 100% {{ transform: translateY(0) rotate(0deg); }}
-            50% {{ transform: translateY(-100px) rotate(180deg); }}
-        }}
-        
-        .container {{
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 40px 20px;
-            position: relative;
-            z-index: 1;
-        }}
-        
-        /* Header Section */
-        .header {{
-            text-align: center;
-            color: white;
-            margin-bottom: 50px;
-            animation: fadeInDown 1s ease;
-        }}
-        
-        @keyframes fadeInDown {{
-            from {{
-                opacity: 0;
-                transform: translateY(-30px);
-            }}
-            to {{
-                opacity: 1;
-                transform: translateY(0);
-            }}
-        }}
-        
-        .header h1 {{
-            font-size: 56px;
-            font-weight: 800;
-            margin-bottom: 15px;
-            text-shadow: 2px 2px 20px rgba(0,0,0,0.3);
-            letter-spacing: -1px;
-        }}
-        
-        .header .subtitle {{
-            font-size: 24px;
-            font-weight: 300;
-            opacity: 0.95;
-            margin-bottom: 20px;
-        }}
-        
-        .header .info {{
-            font-size: 14px;
-            opacity: 0.8;
-            font-weight: 400;
-        }}
-        
-        /* Stats Bar */
-        .stats-bar {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 50px;
-            animation: fadeInUp 1s ease 0.3s both;
-        }}
-        
-        @keyframes fadeInUp {{
-            from {{
-                opacity: 0;
-                transform: translateY(30px);
-            }}
-            to {{
-                opacity: 1;
-                transform: translateY(0);
-            }}
-        }}
-        
-        .stat-card {{
-            background: rgba(255, 255, 255, 0.15);
-            backdrop-filter: blur(10px);
-            border-radius: 15px;
-            padding: 25px;
-            text-align: center;
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            transition: all 0.3s ease;
-        }}
-        
-        .stat-card:hover {{
-            background: rgba(255, 255, 255, 0.25);
-            transform: translateY(-5px);
-        }}
-        
-        .stat-value {{
-            font-size: 42px;
-            font-weight: 700;
-            display: block;
-            margin-bottom: 8px;
-        }}
-        
-        .stat-label {{
-            font-size: 14px;
-            opacity: 0.9;
-            font-weight: 500;
-        }}
-        
-        /* Dashboard Cards Grid */
-        .dashboard-grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
-            gap: 30px;
-            margin-bottom: 50px;
-        }}
-        
-        .dashboard-card {{
-            background: white;
-            border-radius: 20px;
-            padding: 35px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            position: relative;
-            overflow: hidden;
-        }}
-        
-        .dashboard-card::before {{
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 5px;
-            background: linear-gradient(90deg, #667eea, #764ba2, #f093fb);
-            background-size: 200% 200%;
-            animation: gradient 3s ease infinite;
-        }}
-        
-        @keyframes gradient {{
-            0% {{ background-position: 0% 50%; }}
-            50% {{ background-position: 100% 50%; }}
-            100% {{ background-position: 0% 50%; }}
-        }}
-        
-        .dashboard-card:hover {{
-            transform: translateY(-15px) scale(1.02);
-            box-shadow: 0 25px 80px rgba(0,0,0,0.4);
-        }}
-        
-        .card-icon {{
-            font-size: 70px;
-            text-align: center;
-            margin-bottom: 20px;
-            animation: bounce 2s infinite;
-        }}
-        
-        @keyframes bounce {{
-            0%, 100% {{ transform: translateY(0); }}
-            50% {{ transform: translateY(-10px); }}
-        }}
-        
-        .card-title {{
-            font-size: 26px;
-            font-weight: 700;
-            color: #2c3e50;
-            text-align: center;
-            margin-bottom: 15px;
-        }}
-        
-        .card-description {{
-            font-size: 14px;
-            color: #7f8c8d;
-            text-align: center;
-            margin-bottom: 20px;
-            line-height: 1.6;
-            min-height: 60px;
-        }}
-        
-        .status-badge {{
-            display: inline-block;
-            padding: 8px 20px;
-            border-radius: 25px;
-            font-size: 13px;
-            font-weight: 600;
-            margin: 15px 0;
-            animation: pulse 2s infinite;
-        }}
-        
-        @keyframes pulse {{
-            0%, 100% {{ opacity: 1; }}
-            50% {{ opacity: 0.7; }}
-        }}
-        
-        .status-badge.online {{
-            background: linear-gradient(135deg, #11998e, #38ef7d);
-            color: white;
-            box-shadow: 0 5px 15px rgba(17, 153, 142, 0.4);
-        }}
-        
-        .status-badge.offline {{
-            background: linear-gradient(135deg, #eb3349, #f45c43);
-            color: white;
-            box-shadow: 0 5px 15px rgba(235, 51, 73, 0.4);
-        }}
-        
-        .features {{
-            background: #f8f9fa;
-            border-radius: 10px;
-            padding: 15px;
-            margin: 20px 0;
-        }}
-        
-        .features strong {{
-            color: #2c3e50;
-            font-size: 13px;
-            display: block;
-            margin-bottom: 10px;
-        }}
-        
-        .features ul {{
-            list-style: none;
-            padding: 0;
-        }}
-        
-        .features li {{
-            color: #5a6c7d;
-            font-size: 12px;
-            padding: 5px 0;
-            position: relative;
-            padding-left: 20px;
-        }}
-        
-        .features li::before {{
-            content: '✓';
-            position: absolute;
-            left: 0;
-            color: #667eea;
-            font-weight: bold;
-        }}
-        
-        .url-box {{
-            background: #ecf0f1;
-            border-radius: 8px;
-            padding: 12px;
-            margin: 20px 0;
-            text-align: center;
-        }}
-        
-        .url-box code {{
-            font-family: 'Monaco', 'Courier New', monospace;
-            font-size: 11px;
-            color: #34495e;
-        }}
-        
-        .launch-btn {{
-            display: block;
-            width: 100%;
-            padding: 15px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            text-decoration: none;
-            text-align: center;
-            border-radius: 10px;
-            font-weight: 600;
-            font-size: 15px;
-            transition: all 0.3s ease;
-            border: none;
-            cursor: pointer;
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }}
-        
-        .launch-btn:hover:not(.disabled) {{
-            transform: scale(1.05);
-            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
-            background: linear-gradient(135deg, #764ba2, #667eea);
-        }}
-        
-        .launch-btn.disabled {{
-            background: #95a5a6;
-            cursor: not-allowed;
-            box-shadow: none;
-        }}
-        
-        /* Footer */
-        .footer {{
-            text-align: center;
-            color: white;
-            padding: 40px 20px;
-            opacity: 0.9;
-            animation: fadeInUp 1s ease 0.6s both;
-        }}
-        
-        .footer h3 {{
-            font-size: 20px;
-            margin-bottom: 20px;
-        }}
-        
-        .footer p {{
-            font-size: 13px;
-            line-height: 1.8;
-            margin: 10px 0;
-        }}
-        
-        /* Scrollbar */
-        ::-webkit-scrollbar {{
-            width: 10px;
-        }}
-        
-        ::-webkit-scrollbar-track {{
-            background: rgba(255,255,255,0.1);
-        }}
-        
-        ::-webkit-scrollbar-thumb {{
-            background: rgba(255,255,255,0.3);
-            border-radius: 5px;
-        }}
-        
-        ::-webkit-scrollbar-thumb:hover {{
-            background: rgba(255,255,255,0.5);
-        }}
-    </style>
+<style>
+  * {{ margin:0; padding:0; box-sizing:border-box; font-family:'Inter',-apple-system,sans-serif; }}
+  body {{ background:#0d1117; padding:4px 0 20px 0; }}
+  .grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:20px; }}
+  .dash-card {{
+    background:#161b22; border:1px solid #30363d; border-radius:16px;
+    padding:24px; cursor:pointer; transition:all 0.25s ease;
+    display:flex; flex-direction:column; gap:12px;
+    position:relative; overflow:hidden;
+  }}
+  .dash-card::before {{
+    content:''; position:absolute; top:0; left:0; right:0; height:3px;
+    background:linear-gradient(90deg,#E31837,#764ba2);
+    opacity:0; transition:opacity 0.25s ease;
+  }}
+  .dash-card:hover {{ border-color:#6e7681; transform:translateY(-4px); box-shadow:0 12px 40px rgba(0,0,0,0.5); }}
+  .dash-card:hover::before {{ opacity:1; }}
+  .card-header {{ display:flex; align-items:center; justify-content:space-between; }}
+  .card-icon {{ font-size:36px; line-height:1; }}
+  .status-dot {{ font-size:12px; font-weight:600; }}
+  .card-name {{ font-size:18px; font-weight:700; color:#e6edf3; line-height:1.3; }}
+  .card-desc {{ font-size:13px; color:#8b949e; line-height:1.6; flex-grow:1; }}
+  .feature-row {{ display:flex; flex-wrap:wrap; gap:6px; }}
+  .feature-chip {{
+    background:rgba(255,255,255,0.06); border:1px solid #30363d;
+    color:#8b949e; font-size:11px; padding:3px 10px; border-radius:20px; font-weight:500;
+  }}
+  .launch-btn-active {{
+    display:block; text-align:center; background:linear-gradient(135deg,#E31837,#b01028);
+    color:white; text-decoration:none; padding:12px 20px; border-radius:10px;
+    font-weight:700; font-size:14px; margin-top:4px;
+    transition:all 0.2s ease; box-shadow:0 4px 15px rgba(227,24,55,0.25);
+  }}
+  .launch-btn-active:hover {{ box-shadow:0 8px 25px rgba(227,24,55,0.5); transform:translateY(-1px); }}
+  .launch-btn-inactive {{
+    display:block; text-align:center; background:#21262d;
+    color:#6e7681; text-decoration:none; padding:12px 20px; border-radius:10px;
+    font-weight:600; font-size:14px; margin-top:4px; cursor:not-allowed;
+    border:1px solid #30363d;
+  }}
+</style>
 </head>
 <body>
-    <!-- Animated Particles Background -->
-    <div class="particles">
-        <div class="particle" style="width: 80px; height: 80px; top: 10%; left: 10%; animation-delay: 0s;"></div>
-        <div class="particle" style="width: 60px; height: 60px; top: 20%; left: 80%; animation-delay: 2s;"></div>
-        <div class="particle" style="width: 100px; height: 100px; top: 60%; left: 15%; animation-delay: 4s;"></div>
-        <div class="particle" style="width: 70px; height: 70px; top: 70%; left: 85%; animation-delay: 6s;"></div>
-        <div class="particle" style="width: 90px; height: 90px; top: 40%; left: 50%; animation-delay: 3s;"></div>
-    </div>
-
-    <div class="container">
-        <!-- Stats Info -->
-        <div class="header">
-            <div class="info">
-                📡 Server: <strong>{ipv4}</strong> &nbsp;|&nbsp; 🕒 {datetime.now().strftime('%d %B %Y, %H:%M:%S')}
-            </div>
-        </div>
-        
-        <!-- Stats Bar -->
-        <div class="stats-bar">
-            <div class="stat-card">
-                <span class="stat-value">5</span>
-                <span class="stat-label">Active Dashboards</span>
-            </div>
-            <div class="stat-card">
-                <span class="stat-value">{online_count}</span>
-                <span class="stat-label">Online Now</span>
-            </div>
-            <div class="stat-card">
-                <span class="stat-value">{f"{barcode_count:,}" if barcode_count else "-"}</span>
-                <span class="stat-label">Barcodes in DB</span>
-            </div>
-            <div class="stat-card">
-                <span class="stat-value">✅</span>
-                <span class="stat-label">All Systems</span>
-            </div>
-        </div>
-        
-        <!-- Dashboard Cards -->
-        <div class="dashboard-grid">
-            {dashboard_cards_html}
-        </div>
-        
-        <!-- Footer -->
-        <div class="footer">
-            <h3>💡 Quick Access</h3>
-            <p>All dashboards connect to PostgreSQL on port 3307</p>
-            <p>Bookmark this page for instant access to all analytics tools</p>
-            <p style="margin-top: 30px; font-size: 11px; opacity: 0.7;">
-                © 2025 Melcom Group Limited | Analytics Hub v2.0
-            </p>
-        </div>
-    </div>
-    
-    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
-    <script>
-        AOS.init({{
-            duration: 800,
-            easing: 'ease-in-out',
-            once: true
-        }});
-    </script>
+  <div class="grid">{cards_html}</div>
 </body>
 </html>
-""", height=3000, scrolling=True)
+""", height=max(400, len(my_dashboards) * 90))
 
-# ===========================
-# TAB 2: DATA UPLOAD
-# ===========================
-with tab2:
-    st.markdown("### 📤 Data Upload Manager")
-    st.info("Upload CSV files to database tables with automatic backup, indexing, and validation")
-    
-    # Report filter
-    col_filter1, col_filter2 = st.columns([1, 2])
-    
-    with col_filter1:
-        report_type = st.selectbox(
-            "Report Category",
-            options=["All Tables", "Century Penetration", "Serial No Tracking", "Loading vs Offloading", "Others"],
-            help="Filter tables by category"
-        )
-    
-    with col_filter2:
-        # Filter table list based on report type
-        if report_type == "Century Penetration":
-            available_tables = ["GEN_sales", "GEN_SIT", "GEN_reorder_level", "GEN_whstock"]
-        elif report_type == "Serial No Tracking":
-            available_tables = ["serial_no_dailydata", "whreceived_serialno", "serialno_check_yes_no"]
-        elif report_type == "Loading vs Offloading":
-            available_tables = ["LVO_offloading_vs_loading", "LVO_offloading_loading_staging", "LVO_shopmgrname"]
-        elif report_type == "Others":
-            century_tables = {"GEN_sales", "GEN_SIT", "GEN_reorder_level", "GEN_whstock"}
-            serial_tables = {"serial_no_dailydata", "whreceived_serialno", "serialno_check_yes_no"}
-            loading_tables = {"LVO_offloading_vs_loading", "LVO_offloading_loading_staging", "LVO_shopmgrname"}
-            available_tables = [t for t in TABLE_CONFIGS.keys() if t not in century_tables and t not in serial_tables and t not in loading_tables]
-        else:  # All Tables
-            available_tables = list(TABLE_CONFIGS.keys())
-        
-        selected_table = st.selectbox(
-            "Select Target Table",
-            options=available_tables,
-            help="Choose the database table to upload data to"
-        )
-    
-    # Table selection metrics
-    col1, col2, col3 = st.columns([2, 1, 1])
-    
-    with col2:
-        # Show current table count
-        if selected_table:
-            config = TABLE_CONFIGS[selected_table]
-            target_table = config.get('target_table', selected_table)
-            target_database = config.get('database', 'salesdata')
-            current_count = get_table_count(target_table, target_database)
-            if current_count is not None:
-                st.metric("Current Rows", f"{current_count:,}")
-    
-    with col3:
-        # Show latest date
-        if selected_table and 'date_column' in TABLE_CONFIGS[selected_table]:
-            config = TABLE_CONFIGS[selected_table]
-            target_table = config.get('target_table', selected_table)
-            target_database = config.get('database', 'salesdata')
-            date_col = TABLE_CONFIGS[selected_table]['date_column']
-            if date_col:
-                latest_date = get_latest_date(target_table, date_col, target_database)
-                if latest_date:
-                    # Handle both datetime objects and string dates
-                    if hasattr(latest_date, 'strftime'):
-                        date_str = latest_date.strftime('%Y-%m-%d')
-                    else:
-                        date_str = str(latest_date)
-                    st.metric("Latest Date", date_str)
-    
-    st.markdown("---")
-    
-    # Display table info
-    if selected_table is None or selected_table == "":
-        st.info("👆 **Step 1:** Select a Report Category and Table above")
-        st.markdown("**📋 Next Steps:**")
-        st.markdown("1. Choose a table from the dropdown → table details will appear")
-        st.markdown("2. Upload a CSV file with required columns")
-        st.markdown("3. Click **🚀 START DATA UPLOAD** to begin")
-        st.markdown("4. Monitor progress and view results in real-time")
-    elif selected_table:
 
-        config = TABLE_CONFIGS[selected_table]
-        
-        with st.expander("📋 Table Information", expanded=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown(f"**Table Name:** `{selected_table}`")
-                st.markdown(f"**Backup Table:** `{config['backup_table']}`")
-                st.markdown(f"**Date Column:** `{config.get('date_column', 'N/A')}`")
-                upload_mode = config.get('upload_mode', 'incremental')
-                if upload_mode == "incremental":
-                    mode_badge = "🔄 INCREMENTAL"
-                elif upload_mode == "truncate":
-                    mode_badge = "🗑️ TRUNCATE"
-                elif upload_mode == "append":
-                    mode_badge = "➕ APPEND"
+# ── Admin Panel ────────────────────────────────────────────────────────────────
+def _render_admin():
+    st.markdown('<h2 style="color:#e6edf3;font-weight:800;margin-bottom:4px;">Admin Panel</h2>', unsafe_allow_html=True)
+    st.markdown('<p style="color:#8b949e;font-size:14px;margin-bottom:24px;">Manage users and control dashboard access</p>', unsafe_allow_html=True)
+
+    tab_users, tab_access = st.tabs(["👥  User Management", "🔑  Dashboard Access"])
+
+    # ── Tab: Users ────────────────────────────────────────────────────────────
+    with tab_users:
+        st.markdown("#### Add New User")
+        with st.container():
+            c1, c2 = st.columns(2)
+            with c1:
+                new_username = st.text_input("Username", key="nu_user", placeholder="e.g. john.doe")
+                new_display  = st.text_input("Full Name", key="nu_display", placeholder="e.g. John Doe")
+            with c2:
+                new_password = st.text_input("Password", type="password", key="nu_pass", placeholder="Min. 6 characters")
+                new_is_admin = st.checkbox("Grant Admin Rights", key="nu_admin")
+            if st.button("➕ Create User", type="primary", key="create_user_btn"):
+                if not new_username or not new_password or not new_display:
+                    st.error("Please fill in all fields.")
+                elif len(new_password) < 6:
+                    st.error("Password must be at least 6 characters.")
+                elif new_username.strip().lower() == ADMIN_USERNAME:
+                    st.error("Cannot create a user with the reserved admin username.")
                 else:
-                    mode_badge = f"📝 {upload_mode.upper()}"
-                st.markdown(f"**Upload Mode:** {mode_badge}")
-            with col2:
-                st.markdown(f"**Required Columns:** {len(config['columns'])}")
-                st.markdown(f"**Indexes:** {len(config['indexes'])}")
-                encoding = config.get('encoding', 'UTF-8')
-                st.markdown(f"**Encoding:** `{encoding}`")
-                if config.get('history_mode'):
-                    st.markdown("**Process:** Auto-create table → Update current data → Save full history snapshot")
-                elif upload_mode == "truncate":
-                    st.markdown("**Process:** Backup ALL → Truncate → Upload")
-                elif upload_mode == "append":
-                    st.markdown("**Process:** Upload → Append/History Update")
-                else:
-                    st.markdown("**Process:** Drop indexes → Backup NEW → Upload → Create indexes")
-        
-        # File upload
-        uploaded_files = st.file_uploader(
-            "Choose File (CSV or Excel)",
-            type=['csv', 'xlsx', 'xls'],
-            accept_multiple_files=True,
-            help="Upload one or multiple CSV/XLSX/XLS files with required columns"
-        )
-        
-        if uploaded_files:
-            try:
-                uploaded_file_list = uploaded_files if isinstance(uploaded_files, list) else [uploaded_files]
-
-                def _uploaded_size_bytes(uf):
-                    size = getattr(uf, 'size', None)
-                    if isinstance(size, int):
-                        return size
                     try:
-                        return len(uf.getvalue())
-                    except Exception:
-                        return 0
+                        add_user(new_username, new_display, new_password, new_is_admin)
+                        st.success(f"✅ User '{new_display}' created successfully!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
 
-                tiny_files = []
-                filtered_files = []
-                for uf in uploaded_file_list:
-                    sz = _uploaded_size_bytes(uf)
-                    if sz <= 1024:
-                        tiny_files.append(f"{getattr(uf, 'name', 'unknown')} ({sz} bytes)")
-                    else:
-                        filtered_files.append(uf)
+        st.markdown("---")
+        st.markdown("#### Existing Users")
+        users = get_all_users()
+        if not users:
+            st.info("No users created yet. Add your first user above.")
+        else:
+            for uname, dname, is_adm, created in users:
+                with st.container():
+                    c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
+                    with c1:
+                        role_badge = (
+                            '<span style="background:rgba(255,215,0,0.15);border:1px solid rgba(255,215,0,0.4);'
+                            'color:#ffd700;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;margin-left:8px;">ADMIN</span>'
+                            if is_adm else
+                            '<span style="background:#21262d;border:1px solid #30363d;'
+                            'color:#8b949e;padding:2px 8px;border-radius:12px;font-size:11px;">USER</span>'
+                        )
+                        st.markdown(
+                            f'<div style="padding:10px 0;">'
+                            f'<span style="color:#e6edf3;font-weight:600;">{dname}</span>'
+                            f'{role_badge}</div>',
+                            unsafe_allow_html=True
+                        )
+                    with c2:
+                        st.markdown(
+                            f'<div style="color:#8b949e;font-size:13px;padding:14px 0;">@{uname}</div>',
+                            unsafe_allow_html=True
+                        )
+                    with c3:
+                        access_count = len(get_user_access(uname))
+                        st.markdown(
+                            f'<div style="color:#8b949e;font-size:13px;padding:14px 0;">'
+                            f'{"All" if is_adm else access_count} dashboard{"s" if (is_adm or access_count!=1) else ""}</div>',
+                            unsafe_allow_html=True
+                        )
+                    with c4:
+                        if st.button("🗑 Remove", key=f"del_{uname}"):
+                            delete_user(uname)
+                            st.success(f"User '{dname}' removed.")
+                            st.rerun()
+                    st.markdown('<hr style="margin:4px 0;">', unsafe_allow_html=True)
 
-                if tiny_files:
-                    st.warning("Ignoring tiny file(s) <= 1KB: " + ", ".join(tiny_files))
+    # ── Tab: Access ───────────────────────────────────────────────────────────
+    with tab_access:
+        users = get_all_users()
+        non_admin_users = [(uname, dname) for uname, dname, is_adm, _ in users if not is_adm]
+        if not non_admin_users:
+            st.info("No regular users to configure. Create users in the User Management tab first.")
+            return
 
-                uploaded_file_list = filtered_files
-                if not uploaded_file_list:
-                    st.info("No valid files to process after ignoring tiny files.")
-                    st.stop()
+        user_options = {f"{dname} (@{uname})": uname for uname, dname in non_admin_users}
+        selected_label = st.selectbox(
+            "Select User to Configure",
+            options=list(user_options.keys()),
+            key="access_user_select"
+        )
+        if not selected_label:
+            return
+        target_username = user_options[selected_label]
 
-                if len(uploaded_file_list) > 1 and selected_table != "LVO_offloading_vs_loading":
-                    st.warning("Multiple files selected. This table currently uploads one file at a time; using the first file.")
-                    uploaded_file_list = uploaded_file_list[:1]
+        st.markdown(f"<div style='height:8px'></div>", unsafe_allow_html=True)
+        st.markdown(f"#### Dashboard Access for **{selected_label}**")
+        st.markdown(
+            '<p style="color:#8b949e;font-size:13px;margin-bottom:16px;">'
+            'Tick the dashboards this user is allowed to open.</p>',
+            unsafe_allow_html=True
+        )
 
-                uploaded_file = uploaded_file_list[0]
-                file_name = str(getattr(uploaded_file, 'name', '') or '')
-                file_name_lower = file_name.lower()
-                is_excel = file_name_lower.endswith('.xlsx') or file_name_lower.endswith('.xls')
-                lvo_multi_prepared = False
+        current_access = get_user_access(target_username)
+        new_access = []
+        for d in DASHBOARDS:
+            did = d.get("id", d["name"])
+            is_granted = did in current_access
+            label_html = f"{d['icon']} {d['name'].replace(chr(10), ' — ')}"
+            checked = st.checkbox(label_html, value=is_granted, key=f"acc_{target_username}_{did}")
+            if checked:
+                new_access.append(did)
 
-                # Read CSV with automatic encoding detection
-                encoding = config.get('encoding', 'utf-8')
-                skiprows = config.get('skiprows', 0)
-                read_csv_kwargs = {'skiprows': skiprows} if skiprows else {}
-                if encoding.upper() == 'WIN1252':
-                    encoding = 'cp1252'  # pandas uses cp1252 for Windows-1252
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        if st.button("💾 Save Access Settings", type="primary", key="save_access_btn"):
+            set_user_access(target_username, new_access)
+            st.success(f"✅ Access updated for {selected_label}")
+            st.rerun()
 
-                if selected_table == "LVO_offloading_vs_loading" and len(uploaded_file_list) > 1:
-                    chunks = []
-                    file_names = []
-                    for uf in uploaded_file_list:
-                        one_name = str(getattr(uf, 'name', '') or '')
-                        one_name_lower = one_name.lower()
-                        file_names.append(one_name)
-                        if one_name_lower.endswith('.xlsx') or one_name_lower.endswith('.xls'):
-                            uf.seek(0)
-                            one_df = pd.read_excel(uf, skiprows=skiprows if skiprows else 0)
+
+# ─────────────────────────────────────────────────────────────────────────────
+def _render_change_password():
+    st.markdown('<h2 style="color:#e6edf3;font-weight:800;margin-bottom:4px;">Change Password</h2>', unsafe_allow_html=True)
+    st.markdown('<p style="color:#8b949e;font-size:14px;margin-bottom:24px;">Update your account password</p>', unsafe_allow_html=True)
+
+    _, col, _ = st.columns([1, 1.4, 1])
+    with col:
+        st.markdown("""
+        <div style="background:#161b22;border:1px solid #30363d;border-radius:16px;
+             padding:32px;position:relative;overflow:hidden;">
+          <div style="position:absolute;top:0;left:0;right:0;height:3px;
+               background:linear-gradient(90deg,#E31837,#764ba2);"></div>
+          <p style="color:#8b949e;font-size:12px;font-weight:700;text-transform:uppercase;
+               letter-spacing:.8px;margin-bottom:20px;">Account Security</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        with st.form("change_pw_form", clear_on_submit=True):
+            current_pw  = st.text_input("Current Password",  type="password", placeholder="Enter current password")
+            new_pw      = st.text_input("New Password",      type="password", placeholder="Enter new password")
+            confirm_pw  = st.text_input("Confirm Password",  type="password", placeholder="Re-enter new password")
+            submitted   = st.form_submit_button("Update Password", type="primary", use_container_width=True)
+
+        if submitted:
+            if not current_pw or not new_pw or not confirm_pw:
+                st.error("All fields are required.")
+            elif new_pw != confirm_pw:
+                st.error("New passwords do not match.")
+            elif len(new_pw) < 6:
+                st.error("New password must be at least 6 characters.")
+            else:
+                ok, msg = change_password(st.session_state.username, current_pw, new_pw)
+                if ok:
+                    st.success(f"✓ {msg}  Please log in again.")
+                    for k in ["authenticated", "username", "is_admin", "display_name", "portal_view"]:
+                        st.session_state[k] = False if k == "authenticated" else None
+                    st.rerun()
+                else:
+                    st.error(msg)
+
+
+# ROUTING
+# ─────────────────────────────────────────────────────────────────────────────
+
+if not st.session_state.authenticated:
+    _render_login()
+else:
+    _navbar()
+    _sidebar_nav()
+
+    view = st.session_state.portal_view
+
+    if view == "home":
+        _render_portal()
+
+    elif view == "admin" and st.session_state.is_admin:
+        _render_admin()
+
+    elif view == "change_password":
+        _render_change_password()
+
+    elif view == "upload":
+        if not st.session_state.is_admin:
+            st.warning("🔒 Data upload is restricted to administrators.")
+        else:
+            st.markdown('<h2 style="color:#e6edf3;font-weight:800;margin-bottom:4px;">Data Upload</h2>', unsafe_allow_html=True)
+            st.markdown('<p style="color:#8b949e;font-size:14px;margin-bottom:24px;">Upload and manage data files for dashboards</p>', unsafe_allow_html=True)
+            # ---- Original upload tab content ----
+            st.markdown("### 📤 Data Upload Manager")
+            st.info("Upload CSV files to database tables with automatic backup, indexing, and validation")
+
+            # Report filter
+            col_filter1, col_filter2 = st.columns([1, 2])
+            with col_filter1:
+                report_type = st.selectbox(
+                    "Report Category",
+                    options=["All Tables", "Century Penetration", "Serial No Tracking", "Loading vs Offloading", "Others"],
+                    help="Filter tables by category"
+                )
+
+            with col_filter2:
+                # Filter table list based on report type
+                if report_type == "Century Penetration":
+                    available_tables = ["GEN_sales", "GEN_SIT", "GEN_reorder_level", "GEN_whstock"]
+                elif report_type == "Serial No Tracking":
+                    available_tables = ["serial_no_dailydata", "whreceived_serialno", "serialno_check_yes_no"]
+                elif report_type == "Loading vs Offloading":
+                    available_tables = ["LVO_offloading_vs_loading", "LVO_offloading_loading_staging", "LVO_shopmgrname"]
+                elif report_type == "Others":
+                    century_tables = {"GEN_sales", "GEN_SIT", "GEN_reorder_level", "GEN_whstock"}
+                    serial_tables = {"serial_no_dailydata", "whreceived_serialno", "serialno_check_yes_no"}
+                    loading_tables = {"LVO_offloading_vs_loading", "LVO_offloading_loading_staging", "LVO_shopmgrname"}
+                    available_tables = [t for t in TABLE_CONFIGS.keys() if t not in century_tables and t not in serial_tables and t not in loading_tables]
+                else:  # All Tables
+                    available_tables = list(TABLE_CONFIGS.keys())
+
+                selected_table = st.selectbox(
+                    "Select Target Table",
+                    options=available_tables,
+                    help="Choose the database table to upload data to"
+                )
+
+            # Table selection metrics
+            col1, col2, col3 = st.columns([2, 1, 1])
+
+            with col2:
+                # Show current table count
+                if selected_table:
+                    config = TABLE_CONFIGS[selected_table]
+                    target_table = config.get('target_table', selected_table)
+                    target_database = config.get('database', 'salesdata')
+                    current_count = get_table_count(target_table, target_database)
+                    if current_count is not None:
+                        st.metric("Current Rows", f"{current_count:,}")
+
+            with col3:
+                # Show latest date
+                if selected_table and 'date_column' in TABLE_CONFIGS[selected_table]:
+                    config = TABLE_CONFIGS[selected_table]
+                    target_table = config.get('target_table', selected_table)
+                    target_database = config.get('database', 'salesdata')
+                    date_col = TABLE_CONFIGS[selected_table]['date_column']
+                    if date_col:
+                        latest_date = get_latest_date(target_table, date_col, target_database)
+                        if latest_date:
+                            # Handle both datetime objects and string dates
+                            if hasattr(latest_date, 'strftime'):
+                                date_str = latest_date.strftime('%Y-%m-%d')
+                            else:
+                                date_str = str(latest_date)
+                            st.metric("Latest Date", date_str)
+
+            st.markdown("---")
+
+            # Display table info
+            if selected_table is None or selected_table == "":
+                st.info("👆 **Step 1:** Select a Report Category and Table above")
+                st.markdown("**📋 Next Steps:**")
+                st.markdown("1. Choose a table from the dropdown → table details will appear")
+                st.markdown("2. Upload a CSV file with required columns")
+                st.markdown("3. Click **🚀 START DATA UPLOAD** to begin")
+                st.markdown("4. Monitor progress and view results in real-time")
+            elif selected_table:
+
+                config = TABLE_CONFIGS[selected_table]
+
+                with st.expander("📋 Table Information", expanded=True):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        # Show actual upload target (may differ from config key when staging is used)
+                        target_tbl = config.get('target_table', selected_table)
+                        has_staging = target_tbl != selected_table
+                        if has_staging:
+                            st.markdown(f"**Upload Target:** `{target_tbl}` *(staging)*")
+                            st.markdown(f"**Final Table:** `{selected_table}` *(after post-SQL transfer)*")
                         else:
+                            st.markdown(f"**Table Name:** `{selected_table}`")
+                        st.markdown(f"**Backup Table:** `{config['backup_table']}`")
+                        st.markdown(f"**Date Column:** `{config.get('date_column', 'N/A')}`")
+                        upload_mode = config.get('upload_mode', 'incremental')
+                        if upload_mode == "incremental":
+                            mode_badge = "🔄 INCREMENTAL"
+                        elif upload_mode == "truncate":
+                            mode_badge = "🗑️ TRUNCATE"
+                        elif upload_mode == "append":
+                            mode_badge = "➕ APPEND"
+                        else:
+                            mode_badge = f"📝 {upload_mode.upper()}"
+                        st.markdown(f"**Upload Mode:** {mode_badge}")
+                    with col2:
+                        st.markdown(f"**Required Columns:** {len(config['columns'])}")
+                        st.markdown(f"**Indexes:** {len(config['indexes'])}")
+                        encoding = config.get('encoding', 'UTF-8')
+                        st.markdown(f"**Encoding:** `{encoding}`")
+                        if config.get('history_mode'):
+                            st.markdown("**Process:** Auto-create table → Update current data → Save full history snapshot")
+                        elif upload_mode == "truncate":
+                            st.markdown("**Process:** Backup ALL → Truncate → Upload")
+                        elif upload_mode == "append" and has_staging:
+                            st.markdown(f"**Process:** CSV → `{target_tbl}` (staging) → delete date range from `{selected_table}` → insert new rows")
+                        elif upload_mode == "append":
+                            st.markdown("**Process:** Upload → Append/History Update")
+                        else:
+                            st.markdown("**Process:** Drop indexes → Backup NEW → Upload → Create indexes")
+
+                # File upload
+                uploaded_files = st.file_uploader(
+                    "Choose File (CSV or Excel)",
+                    type=['csv', 'xlsx', 'xls'],
+                    accept_multiple_files=True,
+                    help="Upload one or multiple CSV/XLSX/XLS files with required columns"
+                )
+
+                if uploaded_files:
+                    try:
+                        uploaded_file_list = uploaded_files if isinstance(uploaded_files, list) else [uploaded_files]
+
+                        def _uploaded_size_bytes(uf):
+                            size = getattr(uf, 'size', None)
+                            if isinstance(size, int):
+                                return size
                             try:
-                                uf.seek(0)
-                                one_df = pd.read_csv(uf, encoding=encoding, **read_csv_kwargs)
+                                return len(uf.getvalue())
                             except Exception:
-                                one_df = None
+                                return 0
+
+                        tiny_files = []
+                        filtered_files = []
+                        for uf in uploaded_file_list:
+                            sz = _uploaded_size_bytes(uf)
+                            if sz <= 1024:
+                                tiny_files.append(f"{getattr(uf, 'name', 'unknown')} ({sz} bytes)")
+                            else:
+                                filtered_files.append(uf)
+
+                        if tiny_files:
+                            st.warning("Ignoring tiny file(s) <= 1KB: " + ", ".join(tiny_files))
+
+                        uploaded_file_list = filtered_files
+                        if not uploaded_file_list:
+                            st.info("No valid files to process after ignoring tiny files.")
+                            st.stop()
+
+                        if len(uploaded_file_list) > 1 and selected_table != "LVO_offloading_vs_loading":
+                            st.warning("Multiple files selected. This table currently uploads one file at a time; using the first file.")
+                            uploaded_file_list = uploaded_file_list[:1]
+
+                        uploaded_file = uploaded_file_list[0]
+                        file_name = str(getattr(uploaded_file, 'name', '') or '')
+                        file_name_lower = file_name.lower()
+                        is_excel = file_name_lower.endswith('.xlsx') or file_name_lower.endswith('.xls')
+                        lvo_multi_prepared = False
+
+                        # Read CSV with automatic encoding detection
+                        encoding = config.get('encoding', 'utf-8')
+                        skiprows = config.get('skiprows', 0)
+                        read_csv_kwargs = {'skiprows': skiprows} if skiprows else {}
+                        if encoding.upper() == 'WIN1252':
+                            encoding = 'cp1252'  # pandas uses cp1252 for Windows-1252
+
+                        if selected_table == "LVO_offloading_vs_loading" and len(uploaded_file_list) > 1:
+                            chunks = []
+                            file_names = []
+                            for uf in uploaded_file_list:
+                                one_name = str(getattr(uf, 'name', '') or '')
+                                one_name_lower = one_name.lower()
+                                file_names.append(one_name)
+                                if one_name_lower.endswith('.xlsx') or one_name_lower.endswith('.xls'):
+                                    uf.seek(0)
+                                    one_df = pd.read_excel(uf, skiprows=skiprows if skiprows else 0)
+                                else:
+                                    try:
+                                        uf.seek(0)
+                                        one_df = pd.read_csv(uf, encoding=encoding, **read_csv_kwargs)
+                                    except Exception:
+                                        one_df = None
+                                        for enc in ['cp1252', 'latin1', 'iso-8859-1', 'utf-8']:
+                                            for sep in [None, ',', ';', '\t', '|']:
+                                                try:
+                                                    uf.seek(0)
+                                                    one_df = pd.read_csv(
+                                                        uf,
+                                                        encoding=enc,
+                                                        sep=sep,
+                                                        engine='python',
+                                                        on_bad_lines='skip',
+                                                        **read_csv_kwargs,
+                                                    )
+                                                    break
+                                                except Exception:
+                                                    continue
+                                            if one_df is not None:
+                                                break
+                                        if one_df is None:
+                                            raise ValueError(f"Could not detect encoding for file: {one_name}")
+                                one_df.columns = one_df.columns.str.strip().str.lower()
+                                one_df = _prepare_lvo_offloading_df(one_df, one_name)
+                                chunks.append(one_df)
+
+                            df = pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
+                            file_name = ";".join(file_names)
+                            lvo_multi_prepared = True
+                            st.info(f"✅ Loaded {len(uploaded_file_list)} files together for append upload")
+
+                        if not lvo_multi_prepared and is_excel:
+                            uploaded_file.seek(0)
+                            df = pd.read_excel(uploaded_file, skiprows=skiprows if skiprows else 0)
+
+                        # Adaptive CSV read for serialno_check_yes_no:
+                        # auto-detect best header row (skiprows) and encoding.
+                        elif not lvo_multi_prepared and selected_table == "serialno_check_yes_no":
+                            def _compact_header(col_name):
+                                header_key = str(col_name).lower().strip().replace('coode', 'code')
+                                return re.sub(r'[^a-z0-9]+', '', header_key)
+
+                            expected_headers = {_compact_header(c) for c in config['columns']}
+
+                            encoding_candidates = [encoding, 'utf-8', 'cp1252', 'latin1', 'iso-8859-1']
+                            encoding_candidates = list(dict.fromkeys(encoding_candidates))
+
+                            skiprows_candidates = [skiprows, 0, 1, 2, 3, 4, 5]
+                            skiprows_candidates = list(dict.fromkeys(skiprows_candidates))
+
+                            delimiter_candidates = [None, ',', ';', '\t', '|']
+
+                            best_df = None
+                            best_score = -1
+                            best_enc = None
+                            best_skiprows = None
+                            best_sep = None
+
+                            for enc in encoding_candidates:
+                                for skip_val in skiprows_candidates:
+                                    for sep in delimiter_candidates:
+                                        try:
+                                            uploaded_file.seek(0)
+                                            trial_df = pd.read_csv(
+                                                uploaded_file,
+                                                encoding=enc,
+                                                skiprows=skip_val,
+                                                sep=sep,
+                                                engine='python',
+                                                on_bad_lines='skip'
+                                            )
+                                            found_headers = {_compact_header(c) for c in trial_df.columns}
+                                            score = len(expected_headers & found_headers)
+
+                                            if score > best_score:
+                                                best_score = score
+                                                best_df = trial_df
+                                                best_enc = enc
+                                                best_skiprows = skip_val
+                                                best_sep = sep
+
+                                            if score == len(expected_headers):
+                                                break
+                                        except UnicodeDecodeError:
+                                            continue
+                                        except Exception:
+                                            continue
+                                    if best_score == len(expected_headers):
+                                        break
+                                if best_score == len(expected_headers):
+                                    break
+
+                            if best_df is None:
+                                raise ValueError("Could not read CSV header. Please verify file format and delimiter.")
+
+                            df = best_df
+
+                            if best_enc != encoding:
+                                st.info(f"✅ Auto-detected encoding: {best_enc}")
+                            if best_skiprows != skiprows:
+                                st.info(f"✅ Auto-detected header row using skiprows={best_skiprows} (configured: {skiprows})")
+                            if best_sep not in (None, ','):
+                                sep_label = {'\t': 'TAB'}.get(best_sep, best_sep)
+                                st.info(f"✅ Auto-detected delimiter: {sep_label}")
+                        elif not lvo_multi_prepared:
+                            # Try reading with specified encoding, fallback to auto-detection
+                            try:
+                                df = pd.read_csv(uploaded_file, encoding=encoding, **read_csv_kwargs)
+                            except Exception:
+                                # Auto-detect encoding (common: utf-8, cp1252, latin1, iso-8859-1)
+                                uploaded_file.seek(0)  # Reset file pointer
                                 for enc in ['cp1252', 'latin1', 'iso-8859-1', 'utf-8']:
+                                    parsed = False
                                     for sep in [None, ',', ';', '\t', '|']:
                                         try:
-                                            uf.seek(0)
-                                            one_df = pd.read_csv(
-                                                uf,
+                                            uploaded_file.seek(0)
+                                            df = pd.read_csv(
+                                                uploaded_file,
                                                 encoding=enc,
                                                 sep=sep,
                                                 engine='python',
                                                 on_bad_lines='skip',
                                                 **read_csv_kwargs,
                                             )
+                                            st.info(f"✅ Auto-detected encoding: {enc}" + (f", delimiter: {sep if sep is not None else 'auto'}"))
+                                            parsed = True
                                             break
                                         except Exception:
                                             continue
-                                    if one_df is not None:
+                                    if parsed:
                                         break
-                                if one_df is None:
-                                    raise ValueError(f"Could not detect encoding for file: {one_name}")
-                        one_df.columns = one_df.columns.str.strip().str.lower()
-                        one_df = _prepare_lvo_offloading_df(one_df, one_name)
-                        chunks.append(one_df)
+                                else:
+                                    raise ValueError("Could not parse CSV. Check delimiter/header; supported delimiters: comma, semicolon, tab, pipe.")
 
-                    df = pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
-                    file_name = ";".join(file_names)
-                    lvo_multi_prepared = True
-                    st.info(f"✅ Loaded {len(uploaded_file_list)} files together for append upload")
+                        # Show CSV columns for debugging (CRITICAL - shows actual column names)
+                        st.warning(f"🔍 **FILE COLUMNS FOUND:** {', '.join(df.columns.tolist())}")
+                        st.info(f"🎯 **EXPECTED COLUMNS:** {', '.join(config['columns'])}")
 
-                if not lvo_multi_prepared and is_excel:
-                    uploaded_file.seek(0)
-                    df = pd.read_excel(uploaded_file, skiprows=skiprows if skiprows else 0)
+                        # Normalize column names for flexible matching (especially for GEN_whstock)
+                        original_columns = df.columns.tolist()
 
-                # Adaptive CSV read for serialno_check_yes_no:
-                # auto-detect best header row (skiprows) and encoding.
-                elif not lvo_multi_prepared and selected_table == "serialno_check_yes_no":
-                    def _compact_header(col_name):
-                        header_key = str(col_name).lower().strip().replace('coode', 'code')
-                        return re.sub(r'[^a-z0-9]+', '', header_key)
+                        # For serial_no_dailydata and whreceived_serialno and serialno_check_yes_no: map CSV columns (uppercase) to match config
+                        if selected_table in ["serial_no_dailydata", "whreceived_serialno", "serialno_check_yes_no"]:
+                            # Normalize column names: lowercase, normalize separators, fix typos
+                            def normalize_col(col):
+                                normalized = str(col).lower().strip()
+                                normalized = normalized.replace('coode', 'code')
+                                normalized = re.sub(r'[^a-z0-9]+', '_', normalized).strip('_')
+                                return normalized
 
-                    expected_headers = {_compact_header(c) for c in config['columns']}
+                            # Compact form for robust matching when separators are missing
+                            # e.g. CASHIERNAME == CASHIER_NAME
+                            def compact_col(col):
+                                compact = str(col).lower().strip().replace('coode', 'code')
+                                compact = re.sub(r'[^a-z0-9]+', '', compact)
+                                return compact
 
-                    encoding_candidates = [encoding, 'utf-8', 'cp1252', 'latin1', 'iso-8859-1']
-                    encoding_candidates = list(dict.fromkeys(encoding_candidates))
+                            # Create normalized mapping
+                            csv_col_normalized = {}
+                            csv_col_compact = {}
+                            for col in df.columns:
+                                norm_key = normalize_col(col)
+                                compact_key = compact_col(col)
+                                if norm_key not in csv_col_normalized:
+                                    csv_col_normalized[norm_key] = col
+                                if compact_key not in csv_col_compact:
+                                    csv_col_compact[compact_key] = col
+                            config_col_normalized = {normalize_col(col): col for col in config['columns']}
 
-                    skiprows_candidates = [skiprows, 0, 1, 2, 3, 4, 5]
-                    skiprows_candidates = list(dict.fromkeys(skiprows_candidates))
+                            # Rename CSV columns to match config expected case
+                            rename_map = {}
+                            for config_col in config['columns']:
+                                config_normalized = normalize_col(config_col)
+                                config_compact = compact_col(config_col)
+                                # Find matching CSV column (normalized)
+                                if config_normalized in csv_col_normalized:
+                                    csv_actual = csv_col_normalized[config_normalized]
+                                elif config_compact in csv_col_compact:
+                                    csv_actual = csv_col_compact[config_compact]
+                                else:
+                                    csv_actual = None
+                                if csv_actual:
+                                    if csv_actual != config_col:
+                                        rename_map[csv_actual] = config_col
 
-                    delimiter_candidates = [None, ',', ';', '\t', '|']
+                            if rename_map:
+                                df.rename(columns=rename_map, inplace=True)
+                                st.info(f"✅ Normalized {len(rename_map)} column names for case consistency")
 
-                    best_df = None
-                    best_score = -1
-                    best_enc = None
-                    best_skiprows = None
-                    best_sep = None
+                            # Parse date columns AFTER normalization (for serial tables)
+                            if 'parse_dates' in config:
+                                prefer_month_first_cols = {c.lower() for c in config.get('prefer_month_first_dates', [])}
+                                for date_col in config['parse_dates']:
+                                    if date_col in df.columns:
+                                        try:
+                                            prefer_month_first = date_col.lower() in prefer_month_first_cols
+                                            df[date_col] = parse_mixed_date_series(df[date_col], prefer_month_first=prefer_month_first)
+                                            parsed_count = df[date_col].notna().sum()
+                                            if prefer_month_first:
+                                                st.info(f"📅 Parsed {parsed_count:,} dates in column '{date_col}' (MM/DD priority)")
+                                            else:
+                                                st.info(f"📅 Parsed {parsed_count:,} dates in column '{date_col}'")
+                                        except Exception as e:
+                                            st.warning(f"⚠️ Could not parse dates in column '{date_col}': {str(e)}")
 
-                    for enc in encoding_candidates:
-                        for skip_val in skiprows_candidates:
-                            for sep in delimiter_candidates:
-                                try:
-                                    uploaded_file.seek(0)
-                                    trial_df = pd.read_csv(
-                                        uploaded_file,
-                                        encoding=enc,
-                                        skiprows=skip_val,
-                                        sep=sep,
-                                        engine='python',
-                                        on_bad_lines='skip'
-                                    )
-                                    found_headers = {_compact_header(c) for c in trial_df.columns}
-                                    score = len(expected_headers & found_headers)
+                            # Auto-populate LOADED_DATETIME if missing or NULL (for serial_no_dailydata)
+                            if selected_table == "serial_no_dailydata" and 'LOADED_DATETIME' in df.columns:
+                                # Fill empty/NULL values with current timestamp
+                                null_count = df['LOADED_DATETIME'].isna().sum()
+                                if null_count > 0:
+                                    current_timestamp = datetime.now().strftime('%d-%b-%y %I:%M:%S %p')
+                                    df['LOADED_DATETIME'].fillna(current_timestamp, inplace=True)
+                                    st.info(f"📅 Auto-filled {null_count} NULL LOADED_DATETIME values with upload time: {current_timestamp}")
+                        else:
+                            # For other tables, normalize to lowercase
+                            df.columns = df.columns.str.strip().str.lower()
 
-                                    if score > best_score:
-                                        best_score = score
-                                        best_df = trial_df
-                                        best_enc = enc
-                                        best_skiprows = skip_val
-                                        best_sep = sep
+                        # LVO table-friendly alias normalization
+                        if selected_table == "LVO_shopmgrname":
+                            lvo_mgr_alias = {
+                                'shopname': 'shop_description',
+                                'shop_name': 'shop_description',
+                                'managername': 'shop_manager_name',
+                                'manager_name': 'shop_manager_name',
+                            }
+                            rename_map = {}
+                            for col in df.columns:
+                                key = _normalize_header_key(col)
+                                if key in lvo_mgr_alias and col != lvo_mgr_alias[key]:
+                                    rename_map[col] = lvo_mgr_alias[key]
+                            if rename_map:
+                                df.rename(columns=rename_map, inplace=True)
 
-                                    if score == len(expected_headers):
+                        if selected_table == "LVO_offloading_loading_staging":
+                            lvo_stage_alias = {
+                                'shopdescription': 'shop_name',
+                                'shopdesc': 'shop_name',
+                            }
+                            rename_map = {}
+                            for col in df.columns:
+                                key = _normalize_header_key(col)
+                                if key in lvo_stage_alias and col != lvo_stage_alias[key]:
+                                    rename_map[col] = lvo_stage_alias[key]
+                            if rename_map:
+                                df.rename(columns=rename_map, inplace=True)
+
+                        if selected_table == "LVO_offloading_vs_loading" and not lvo_multi_prepared:
+                            df = _prepare_lvo_offloading_df(df, file_name)
+
+                        # Column mapping for common variations (case-insensitive)
+                        column_variations = {
+                            'vc_item_code': ['vc_item_c', 'item_code', 'itemcode', 'vc_item_code'],
+                            'wh_code': ['wh_code', 'm_code', 'shop_code', 'warehouse_code'],
+                            'wh_name': ['wh_name', 'warehouse_name', 'shop_name', 'location'],
+                            'balance_qty': ['balance_qty', 'balance_q', 'qty', 'quantity', 'stock_qty']
+                        }
+
+                        # Additional mappings for serial number uploads
+                        serial_variations = {
+                            'serial_no': ['serial_no', 'vc_serail_no', 'vc_serail_no', 'vc_serial_no', 'shop_serail_no', 'vc_serial', 'serialno'],
+                            'vc_item_code': ['vc_item_code', 'vc_item', 'item_code', 'vc_itemcode'],
+                            'wh_code': ['vc_wh_code', 'vc_wh_code', 'wh_code', 'vc_shop_code', 'vc_warehouse_code'],
+                            'received_date': ['loaded_datetime', 'loadingdate', 'dt_load_date', 'dt_doc_date', 'dt_invoice_date', 'loaded_date']
+                        }
+
+                        # Apply column mapping if table is GEN_whstock
+                        if selected_table == "GEN_whstock":
+                            for target_col, variations in column_variations.items():
+                                for var in variations:
+                                    if var in df.columns:
+                                        if var != target_col:
+                                            df.rename(columns={var: target_col}, inplace=True)
                                         break
-                                except UnicodeDecodeError:
-                                    continue
-                                except Exception:
-                                    continue
-                            if best_score == len(expected_headers):
-                                break
-                        if best_score == len(expected_headers):
-                            break
 
-                    if best_df is None:
-                        raise ValueError("Could not read CSV header. Please verify file format and delimiter.")
+                        # Apply serial mappings and ensure optional columns exist (only for non-serial_no_dailydata)
+                        if selected_table == "whreceived_serialno":
+                            for target_col, variations in serial_variations.items():
+                                for var in variations:
+                                    if var in df.columns:
+                                        if var != target_col:
+                                            df.rename(columns={var: target_col}, inplace=True)
+                                        break
 
-                    df = best_df
+                            # Ensure optional columns exist so validation won't fail
+                            for opt_col in ('source', 'note'):
+                                if opt_col not in df.columns:
+                                    df[opt_col] = ''
 
-                    if best_enc != encoding:
-                        st.info(f"✅ Auto-detected encoding: {best_enc}")
-                    if best_skiprows != skiprows:
-                        st.info(f"✅ Auto-detected header row using skiprows={best_skiprows} (configured: {skiprows})")
-                    if best_sep not in (None, ','):
-                        sep_label = {'\t': 'TAB'}.get(best_sep, best_sep)
-                        st.info(f"✅ Auto-detected delimiter: {sep_label}")
-                elif not lvo_multi_prepared:
-                    # Try reading with specified encoding, fallback to auto-detection
-                    try:
-                        df = pd.read_csv(uploaded_file, encoding=encoding, **read_csv_kwargs)
-                    except Exception:
-                        # Auto-detect encoding (common: utf-8, cp1252, latin1, iso-8859-1)
-                        uploaded_file.seek(0)  # Reset file pointer
-                        for enc in ['cp1252', 'latin1', 'iso-8859-1', 'utf-8']:
-                            parsed = False
-                            for sep in [None, ',', ';', '\t', '|']:
-                                try:
-                                    uploaded_file.seek(0)
-                                    df = pd.read_csv(
-                                        uploaded_file,
-                                        encoding=enc,
-                                        sep=sep,
-                                        engine='python',
-                                        on_bad_lines='skip',
-                                        **read_csv_kwargs,
-                                    )
-                                    st.info(f"✅ Auto-detected encoding: {enc}" + (f", delimiter: {sep if sep is not None else 'auto'}"))
-                                    parsed = True
-                                    break
-                                except Exception:
-                                    continue
-                            if parsed:
-                                break
+                        st.success(f"✅ File loaded: **{len(df):,}** rows")
+
+                        # Validate columns (case-sensitive for serial tables, case-insensitive for others)
+                        if selected_table in ["serial_no_dailydata", "whreceived_serialno", "serialno_check_yes_no"]:
+                            # Keep original case for validation
+                            config_columns = config['columns']
+                            df_columns = df.columns.tolist()
+
+                            # Normalized validation (handles spaces, underscores, missing separators, typos)
+                            def normalize_col(col):
+                                normalized = str(col).lower().strip()
+                                normalized = normalized.replace('coode', 'code')
+                                normalized = re.sub(r'[^a-z0-9]+', '_', normalized).strip('_')
+                                return normalized
+
+                            def compact_col(col):
+                                compact = str(col).lower().strip().replace('coode', 'code')
+                                compact = re.sub(r'[^a-z0-9]+', '', compact)
+                                return compact
+
+                            config_normalized = {normalize_col(col): col for col in config_columns}
+                            df_normalized = {normalize_col(col): col for col in df_columns}
+                            config_compact = {compact_col(col): col for col in config_columns}
+                            df_compact = {compact_col(col): col for col in df_columns}
+
+                            missing_cols = set(config_compact.keys()) - set(df_compact.keys())
+                            extra_cols = set(df_compact.keys()) - set(config_compact.keys())
+
+                            # Convert back to actual column names for display
+                            missing_cols_display = [config_compact[col] for col in missing_cols]
+                            extra_cols_display = [df_compact[col] for col in extra_cols]
+
+                            # Create config_columns_lower for upload (only include columns from config, in config order)
+                            config_columns_lower = []
+                            for config_col in config_columns:
+                                # Find matching column in DataFrame (normalized)
+                                config_norm = normalize_col(config_col)
+                                config_comp = compact_col(config_col)
+                                if config_norm in df_normalized:
+                                    config_columns_lower.append(df_normalized[config_norm])
+                                elif config_comp in df_compact:
+                                    config_columns_lower.append(df_compact[config_comp])
+                                else:
+                                    # Fallback: try to find by case-insensitive match
+                                    for df_col in df_columns:
+                                        if df_col.lower().strip() == config_col.lower().strip():
+                                            config_columns_lower.append(df_col)
+                                            break
                         else:
-                            raise ValueError("Could not parse CSV. Check delimiter/header; supported delimiters: comma, semicolon, tab, pipe.")
-                
-                # Show CSV columns for debugging (CRITICAL - shows actual column names)
-                st.warning(f"🔍 **FILE COLUMNS FOUND:** {', '.join(df.columns.tolist())}")
-                st.info(f"🎯 **EXPECTED COLUMNS:** {', '.join(config['columns'])}")
-                
-                # Normalize column names for flexible matching (especially for GEN_whstock)
-                original_columns = df.columns.tolist()
-                
-                # For serial_no_dailydata and whreceived_serialno and serialno_check_yes_no: map CSV columns (uppercase) to match config
-                if selected_table in ["serial_no_dailydata", "whreceived_serialno", "serialno_check_yes_no"]:
-                    # Normalize column names: lowercase, normalize separators, fix typos
-                    def normalize_col(col):
-                        normalized = str(col).lower().strip()
-                        normalized = normalized.replace('coode', 'code')
-                        normalized = re.sub(r'[^a-z0-9]+', '_', normalized).strip('_')
-                        return normalized
+                            # Update config columns to lowercase for validation and upload
+                            config_columns_lower = [col.lower() for col in config['columns']]
 
-                    # Compact form for robust matching when separators are missing
-                    # e.g. CASHIERNAME == CASHIER_NAME
-                    def compact_col(col):
-                        compact = str(col).lower().strip().replace('coode', 'code')
-                        compact = re.sub(r'[^a-z0-9]+', '', compact)
-                        return compact
-                    
-                    # Create normalized mapping
-                    csv_col_normalized = {}
-                    csv_col_compact = {}
-                    for col in df.columns:
-                        norm_key = normalize_col(col)
-                        compact_key = compact_col(col)
-                        if norm_key not in csv_col_normalized:
-                            csv_col_normalized[norm_key] = col
-                        if compact_key not in csv_col_compact:
-                            csv_col_compact[compact_key] = col
-                    config_col_normalized = {normalize_col(col): col for col in config['columns']}
-                    
-                    # Rename CSV columns to match config expected case
-                    rename_map = {}
-                    for config_col in config['columns']:
-                        config_normalized = normalize_col(config_col)
-                        config_compact = compact_col(config_col)
-                        # Find matching CSV column (normalized)
-                        if config_normalized in csv_col_normalized:
-                            csv_actual = csv_col_normalized[config_normalized]
-                        elif config_compact in csv_col_compact:
-                            csv_actual = csv_col_compact[config_compact]
+                            # Validate columns (check lowercase versions)
+                            missing_cols_display = set(config_columns_lower) - set(df.columns)
+                            extra_cols_display = set(df.columns) - set(config_columns_lower)
+                            missing_cols = missing_cols_display
+                            extra_cols = extra_cols_display
+
+                        if missing_cols:
+                            st.error(f"❌ Missing required columns: {', '.join(missing_cols_display)}")
+                            st.info(f"📋 Available columns in CSV: {', '.join(sorted(df.columns))}")
                         else:
-                            csv_actual = None
-                        if csv_actual:
-                            if csv_actual != config_col:
-                                rename_map[csv_actual] = config_col
-                    
-                    if rename_map:
-                        df.rename(columns=rename_map, inplace=True)
-                        st.info(f"✅ Normalized {len(rename_map)} column names for case consistency")
-                    
-                    # Parse date columns AFTER normalization (for serial tables)
-                    if 'parse_dates' in config:
-                        prefer_month_first_cols = {c.lower() for c in config.get('prefer_month_first_dates', [])}
-                        for date_col in config['parse_dates']:
-                            if date_col in df.columns:
-                                try:
-                                    prefer_month_first = date_col.lower() in prefer_month_first_cols
-                                    df[date_col] = parse_mixed_date_series(df[date_col], prefer_month_first=prefer_month_first)
-                                    parsed_count = df[date_col].notna().sum()
-                                    if prefer_month_first:
-                                        st.info(f"📅 Parsed {parsed_count:,} dates in column '{date_col}' (MM/DD priority)")
-                                    else:
-                                        st.info(f"📅 Parsed {parsed_count:,} dates in column '{date_col}'")
-                                except Exception as e:
-                                    st.warning(f"⚠️ Could not parse dates in column '{date_col}': {str(e)}")
-                    
-                    # Auto-populate LOADED_DATETIME if missing or NULL (for serial_no_dailydata)
-                    if selected_table == "serial_no_dailydata" and 'LOADED_DATETIME' in df.columns:
-                        # Fill empty/NULL values with current timestamp
-                        null_count = df['LOADED_DATETIME'].isna().sum()
-                        if null_count > 0:
-                            current_timestamp = datetime.now().strftime('%d-%b-%y %I:%M:%S %p')
-                            df['LOADED_DATETIME'].fillna(current_timestamp, inplace=True)
-                            st.info(f"📅 Auto-filled {null_count} NULL LOADED_DATETIME values with upload time: {current_timestamp}")
-                else:
-                    # For other tables, normalize to lowercase
-                    df.columns = df.columns.str.strip().str.lower()
+                            st.success(f"✅ All required columns present")
 
-                # LVO table-friendly alias normalization
-                if selected_table == "LVO_shopmgrname":
-                    lvo_mgr_alias = {
-                        'shopname': 'shop_description',
-                        'shop_name': 'shop_description',
-                        'managername': 'shop_manager_name',
-                        'manager_name': 'shop_manager_name',
-                    }
-                    rename_map = {}
-                    for col in df.columns:
-                        key = _normalize_header_key(col)
-                        if key in lvo_mgr_alias and col != lvo_mgr_alias[key]:
-                            rename_map[col] = lvo_mgr_alias[key]
-                    if rename_map:
-                        df.rename(columns=rename_map, inplace=True)
+                        if extra_cols_display:
+                            st.warning(f"⚠️ Extra columns (will be ignored): {', '.join(extra_cols_display)}")
 
-                if selected_table == "LVO_offloading_loading_staging":
-                    lvo_stage_alias = {
-                        'shopdescription': 'shop_name',
-                        'shopdesc': 'shop_name',
-                    }
-                    rename_map = {}
-                    for col in df.columns:
-                        key = _normalize_header_key(col)
-                        if key in lvo_stage_alias and col != lvo_stage_alias[key]:
-                            rename_map[col] = lvo_stage_alias[key]
-                    if rename_map:
-                        df.rename(columns=rename_map, inplace=True)
+                        # Partition table validation for GEN_sales
+                        if selected_table == "GEN_sales" and config.get('is_partitioned'):
+                            if 'date_invoice' in df.columns:
+                                df['date_invoice'] = pd.to_datetime(df['date_invoice'])
+                                min_date = df['date_invoice'].min()
+                                max_date = df['date_invoice'].max()
 
-                if selected_table == "LVO_offloading_vs_loading" and not lvo_multi_prepared:
-                    df = _prepare_lvo_offloading_df(df, file_name)
-                
-                # Column mapping for common variations (case-insensitive)
-                column_variations = {
-                    'vc_item_code': ['vc_item_c', 'item_code', 'itemcode', 'vc_item_code'],
-                    'wh_code': ['wh_code', 'm_code', 'shop_code', 'warehouse_code'],
-                    'wh_name': ['wh_name', 'warehouse_name', 'shop_name', 'location'],
-                    'balance_qty': ['balance_qty', 'balance_q', 'qty', 'quantity', 'stock_qty']
-                }
-                
-                # Additional mappings for serial number uploads
-                serial_variations = {
-                    'serial_no': ['serial_no', 'vc_serail_no', 'vc_serail_no', 'vc_serial_no', 'shop_serail_no', 'vc_serial', 'serialno'],
-                    'vc_item_code': ['vc_item_code', 'vc_item', 'item_code', 'vc_itemcode'],
-                    'wh_code': ['vc_wh_code', 'vc_wh_code', 'wh_code', 'vc_shop_code', 'vc_warehouse_code'],
-                    'received_date': ['loaded_datetime', 'loadingdate', 'dt_load_date', 'dt_doc_date', 'dt_invoice_date', 'loaded_date']
-                }
+                                # Get unique months in data
+                                df['_month'] = df['date_invoice'].dt.to_period('M')
+                                unique_months = df['_month'].unique()
+                                month_counts = df['_month'].value_counts().sort_index()
 
-                # Apply column mapping if table is GEN_whstock
-                if selected_table == "GEN_whstock":
-                    for target_col, variations in column_variations.items():
-                        for var in variations:
-                            if var in df.columns:
-                                if var != target_col:
-                                    df.rename(columns={var: target_col}, inplace=True)
-                                break
+                                st.info(f"📅 **Partitioned Table:** Data will be auto-routed to monthly partitions (e.g., sales_dec2025)")
+                                st.success(f"✅ Date range: {min_date.strftime('%Y-%m-%d')} to {max_date.strftime('%Y-%m-%d')}")
 
-                # Apply serial mappings and ensure optional columns exist (only for non-serial_no_dailydata)
-                if selected_table == "whreceived_serialno":
-                    for target_col, variations in serial_variations.items():
-                        for var in variations:
-                            if var in df.columns:
-                                if var != target_col:
-                                    df.rename(columns={var: target_col}, inplace=True)
-                                break
+                                if len(unique_months) > 1:
+                                    st.info(f"📊 **Multiple months detected:** Data spans {len(unique_months)} months")
+                                    for month in month_counts.index:
+                                        count = month_counts[month]
+                                        month_str = month.strftime('%Y-%m')
+                                        partition_name = f"sales_{month.strftime('%b%Y').lower()}"
+                                        st.write(f"   • {month_str}: {count:,} rows → `{partition_name}`")
+                                else:
+                                    month_str = unique_months[0].strftime('%Y-%m')
+                                    partition_name = f"sales_{unique_months[0].strftime('%b%Y').lower()}"
+                                    st.success(f"✅ Single month: {month_str} → partition `{partition_name}`")
 
-                    # Ensure optional columns exist so validation won't fail
-                    for opt_col in ('source', 'note'):
-                        if opt_col not in df.columns:
-                            df[opt_col] = ''
-                
-                st.success(f"✅ File loaded: **{len(df):,}** rows")
-                
-                # Validate columns (case-sensitive for serial tables, case-insensitive for others)
-                if selected_table in ["serial_no_dailydata", "whreceived_serialno", "serialno_check_yes_no"]:
-                    # Keep original case for validation
-                    config_columns = config['columns']
-                    df_columns = df.columns.tolist()
-                    
-                    # Normalized validation (handles spaces, underscores, missing separators, typos)
-                    def normalize_col(col):
-                        normalized = str(col).lower().strip()
-                        normalized = normalized.replace('coode', 'code')
-                        normalized = re.sub(r'[^a-z0-9]+', '_', normalized).strip('_')
-                        return normalized
+                                df.drop('_month', axis=1, inplace=True)
 
-                    def compact_col(col):
-                        compact = str(col).lower().strip().replace('coode', 'code')
-                        compact = re.sub(r'[^a-z0-9]+', '', compact)
-                        return compact
-                    
-                    config_normalized = {normalize_col(col): col for col in config_columns}
-                    df_normalized = {normalize_col(col): col for col in df_columns}
-                    config_compact = {compact_col(col): col for col in config_columns}
-                    df_compact = {compact_col(col): col for col in df_columns}
-                    
-                    missing_cols = set(config_compact.keys()) - set(df_compact.keys())
-                    extra_cols = set(df_compact.keys()) - set(config_compact.keys())
-                    
-                    # Convert back to actual column names for display
-                    missing_cols_display = [config_compact[col] for col in missing_cols]
-                    extra_cols_display = [df_compact[col] for col in extra_cols]
-                    
-                    # Create config_columns_lower for upload (only include columns from config, in config order)
-                    config_columns_lower = []
-                    for config_col in config_columns:
-                        # Find matching column in DataFrame (normalized)
-                        config_norm = normalize_col(config_col)
-                        config_comp = compact_col(config_col)
-                        if config_norm in df_normalized:
-                            config_columns_lower.append(df_normalized[config_norm])
-                        elif config_comp in df_compact:
-                            config_columns_lower.append(df_compact[config_comp])
-                        else:
-                            # Fallback: try to find by case-insensitive match
-                            for df_col in df_columns:
-                                if df_col.lower().strip() == config_col.lower().strip():
-                                    config_columns_lower.append(df_col)
-                                    break
-                else:
-                    # Update config columns to lowercase for validation and upload
-                    config_columns_lower = [col.lower() for col in config['columns']]
-                    
-                    # Validate columns (check lowercase versions)
-                    missing_cols_display = set(config_columns_lower) - set(df.columns)
-                    extra_cols_display = set(df.columns) - set(config_columns_lower)
-                    missing_cols = missing_cols_display
-                    extra_cols = extra_cols_display
-                
-                if missing_cols:
-                    st.error(f"❌ Missing required columns: {', '.join(missing_cols_display)}")
-                    st.info(f"📋 Available columns in CSV: {', '.join(sorted(df.columns))}")
-                else:
-                    st.success(f"✅ All required columns present")
-                    
-                if extra_cols_display:
-                    st.warning(f"⚠️ Extra columns (will be ignored): {', '.join(extra_cols_display)}")
-                    
-                # Partition table validation for GEN_sales
-                if selected_table == "GEN_sales" and config.get('is_partitioned'):
-                    if 'date_invoice' in df.columns:
-                        df['date_invoice'] = pd.to_datetime(df['date_invoice'])
-                        min_date = df['date_invoice'].min()
-                        max_date = df['date_invoice'].max()
-                        
-                        # Get unique months in data
-                        df['_month'] = df['date_invoice'].dt.to_period('M')
-                        unique_months = df['_month'].unique()
-                        month_counts = df['_month'].value_counts().sort_index()
-                        
-                        st.info(f"📅 **Partitioned Table:** Data will be auto-routed to monthly partitions (e.g., sales_dec2025)")
-                        st.success(f"✅ Date range: {min_date.strftime('%Y-%m-%d')} to {max_date.strftime('%Y-%m-%d')}")
-                        
-                        if len(unique_months) > 1:
-                            st.info(f"📊 **Multiple months detected:** Data spans {len(unique_months)} months")
-                            for month in month_counts.index:
-                                count = month_counts[month]
-                                month_str = month.strftime('%Y-%m')
-                                partition_name = f"sales_{month.strftime('%b%Y').lower()}"
-                                st.write(f"   • {month_str}: {count:,} rows → `{partition_name}`")
-                        else:
-                            month_str = unique_months[0].strftime('%Y-%m')
-                            partition_name = f"sales_{unique_months[0].strftime('%b%Y').lower()}"
-                            st.success(f"✅ Single month: {month_str} → partition `{partition_name}`")
-                        
-                        df.drop('_month', axis=1, inplace=True)
-                        
-                        # Check if data goes to end of month
-                        last_day_of_month = (max_date.replace(day=28) + pd.Timedelta(days=4)).replace(day=1) - pd.Timedelta(days=1)
-                        if max_date.date() < last_day_of_month.date():
-                            st.warning(f"⚠️ **Incomplete month data:** Latest date is {max_date.strftime('%Y-%m-%d')}, month ends on {last_day_of_month.strftime('%Y-%m-%d')}")
+                                # Check if data goes to end of month
+                                last_day_of_month = (max_date.replace(day=28) + pd.Timedelta(days=4)).replace(day=1) - pd.Timedelta(days=1)
+                                if max_date.date() < last_day_of_month.date():
+                                    st.warning(f"⚠️ **Incomplete month data:** Latest date is {max_date.strftime('%Y-%m-%d')}, month ends on {last_day_of_month.strftime('%Y-%m-%d')}")
 
-                # Show preview
-                with st.expander("👁️ Preview Data (first 10 rows)", expanded=False):
-                    st.dataframe(df.head(10), use_container_width=True)
-                
-                # Upload controls
-                st.markdown("---")
-                
-                col1, col2, col3 = st.columns([1, 2, 1])
-                
-                with col1:
-                    if st.session_state.upload_in_progress:
-                        if st.button("🛑 CANCEL UPLOAD", type="secondary", use_container_width=True):
-                            cancel_upload()
-                            st.warning("⚠️ Upload cancelled by user")
-                            st.rerun()
-                
-                can_upload = not missing_cols and not st.session_state.upload_in_progress
-                with col2:
-                    upload_btn = st.button(
-                        "🚀 START DATA UPLOAD",
-                        type="primary",
-                        use_container_width=True,
-                        disabled=not can_upload
-                    )
-                
-                with col3:
-                    st.markdown("")  # Spacer
+                        # Show preview
+                        with st.expander("👁️ Preview Data (first 10 rows)", expanded=False):
+                            st.dataframe(df.head(10), use_container_width=True)
 
-                if missing_cols:
-                    st.warning("Upload disabled until all required columns are present.")
-                    
-                if upload_btn and not st.session_state.upload_in_progress:
-                    st.session_state.upload_cancelled = False
-                    st.session_state.upload_in_progress = True
-                        
-                    # Create containers for better visibility
-                    progress_container = st.container()
-                    status_container = st.container()
-                    details_container = st.container()
-                    
-                    with progress_container:
-                        progress_bar = st.progress(0)
-                        status_text = st.empty()
-                    
-                    with details_container:
-                        details_expander = st.expander("📋 Detailed Log", expanded=True)
-                    
-                    dropped_indexes = []
-                    created_indexes = []
-                    backed_up = 0
-                    uploaded = 0
-                    
-                    try:
-                        # Connect to database (use specific database if configured)
-                        status_text.text("🔗 Connecting to database...")
-                        progress_bar.progress(5)
-                        db_config = DB_CONFIG.copy()
-                        target_database = config.get('database', 'salesdata')
-                        db_config['database'] = target_database
-                        conn = psycopg2.connect(**db_config)
-                        st.session_state.current_connection = conn
-                        status_container.success(f"✅ Connected to database: {target_database}")
-                        
-                        # Get target table name (may differ from config key)
-                        target_table = config.get('target_table', selected_table)
-                        
-                        if st.session_state.upload_cancelled:
-                            raise Exception("Upload cancelled by user")
-                        
-                        # Step 1: Drop indexes
-                        status_text.text("🔽 Dropping indexes...")
-                        progress_bar.progress(15)
-                        dropped_indexes = drop_indexes(conn, config, status_container)
-                        status_container.success(f"✅ Dropped {len(dropped_indexes)} indexes")
-                        
-                        if st.session_state.upload_cancelled:
-                            raise Exception("Upload cancelled by user")
-                        
-                        # Step 2: Backup existing data
-                        upload_mode = config.get('upload_mode', 'incremental')
-                        mode_text = "APPEND" if upload_mode == "append" else ("TRUNCATE" if upload_mode == "truncate" else "INCREMENTAL")
-                        status_text.text(f"💾 Backing up data ({mode_text} mode)...")
-                        progress_bar.progress(35)
-                        backed_up = backup_existing_data(conn, target_table, config['backup_table'], upload_mode, status_container, config.get('date_column'))
-                        if upload_mode == "truncate":
-                            status_container.success(f"✅ Backed up {backed_up:,} rows and truncated table")
-                        elif upload_mode == "append":
-                            status_container.success(f"✅ Append mode: Ready to upload")
-                        else:
-                            status_container.success(f"✅ Backed up {backed_up:,} rows")
-                        
-                        if st.session_state.upload_cancelled:
-                            raise Exception("Upload cancelled by user")
-                        
-                        # Step 3: Upload new data
-                        status_text.text("📤 Uploading data...")
-                        progress_bar.progress(55)
-                        
-                        # Use lowercase column names for selection (after normalization)
-                        df_upload = df[config_columns_lower].copy()
-                        
-                        # For serial tables, convert DataFrame column names to lowercase to match table schema
-                        if selected_table in ['serial_no_dailydata', 'whreceived_serialno', 'serialno_check_yes_no']:
-                            df_upload.columns = [col.lower() for col in df_upload.columns]
-                        
-                        # Apply column mapping if configured
-                        if 'column_mapping' in config:
-                            df_upload = df_upload.rename(columns=config['column_mapping'])
-                            mapped_columns = [config['column_mapping'].get(col, col) for col in config['columns']]
-                        else:
-                            mapped_columns = config['columns']
-                        
-                        # For serial tables, ensure mapped_columns are also lowercase
-                        if selected_table in ['serial_no_dailydata', 'whreceived_serialno', 'serialno_check_yes_no']:
-                            mapped_columns = [col.lower() for col in mapped_columns]
-                        
-                        # Parse date columns for serial tables before upload
-                        if selected_table in ['serial_no_dailydata', 'whreceived_serialno', 'serialno_check_yes_no'] and 'parse_dates' in config:
-                            dayfirst = config.get('date_parse_dayfirst', True)
-                            prefer_month_first_cols = {c.lower() for c in config.get('prefer_month_first_dates', [])}
-                            for date_col in config['parse_dates']:
-                                col_lower = date_col.lower()
-                                if col_lower in df_upload.columns:
-                                    try:
-                                        prefer_month_first = col_lower in prefer_month_first_cols
-                                        if prefer_month_first:
-                                            df_upload[col_lower] = parse_mixed_date_series(df_upload[col_lower], prefer_month_first=True)
-                                        else:
-                                            df_upload[col_lower] = pd.to_datetime(df_upload[col_lower], dayfirst=dayfirst, errors='coerce')
-                                        # Convert to string format for PostgreSQL (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)
-                                        if col_lower == 'loaded_datetime':
-                                            # Keep timestamp format
-                                            df_upload[col_lower] = df_upload[col_lower].dt.strftime('%Y-%m-%d %H:%M:%S')
-                                        else:
-                                            # Date only
-                                            df_upload[col_lower] = df_upload[col_lower].dt.strftime('%Y-%m-%d')
-                                        if prefer_month_first:
-                                            status_container.info(f"✅ Parsed date column '{col_lower}' (MM/DD priority)")
-                                        else:
-                                            status_container.info(f"✅ Parsed date column '{col_lower}'")
-                                    except Exception as date_err:
-                                        status_container.warning(f"⚠️ Could not parse date column '{col_lower}': {str(date_err)[:100]}")
-                        
-                        # Remove rows with all null values or empty rows
-                        rows_before = len(df_upload)
-                        df_upload = df_upload.dropna(how='all')  # Drop rows where all columns are null
-                        df_upload = df_upload[df_upload.astype(str).ne('').any(axis=1)]  # Drop rows with all empty strings
-                        rows_after = len(df_upload)
-                        if rows_before > rows_after:
-                            status_container.info(f"ℹ️ Skipped {rows_before - rows_after:,} empty rows")
-                        
-                        # Apply data type conversions if configured (case-insensitive to match normalized columns)
-                        if 'type_conversions' in config:
-                            for col, dtype in config['type_conversions'].items():
-                                matching_cols = [c for c in df_upload.columns if c.lower() == col.lower()]
-                                for actual_col in matching_cols:
-                                    numeric_series = pd.to_numeric(df_upload[actual_col], errors='coerce')
-                                    if dtype == 'int':
-                                        df_upload[actual_col] = numeric_series.fillna(0).astype(int)
-                                    elif dtype == 'float':
-                                        df_upload[actual_col] = numeric_series
-                        
-                        # Check if table is partitioned
-                        is_partitioned = config.get('is_partitioned', False)
-                        add_upload_date = config.get('add_upload_date', False)
-
-                        # Note: For serial_no_dailydata, UPSERT logic handles updates without pre-deletion
-                        # CSV data will update existing serial_no records and insert new ones
-
-                        uploaded = upload_data_to_table(
-                            conn,
-                            target_table,
-                            df_upload,
-                            mapped_columns,
-                            status_container,
-                            is_partitioned,
-                            target_database,
-                            add_upload_date,
-                            table_config=config,
-                            source_file_name=file_name,
-                        )
-                        status_container.success(f"✅ Uploaded {uploaded:,} rows")
-                        
-                        if st.session_state.upload_cancelled:
-                            raise Exception("Upload cancelled by user")
-                        
-                        # Step 4: Recreate indexes
-                        status_text.text("🔼 Creating indexes...")
-                        progress_bar.progress(75)
-                        created_indexes = create_indexes(conn, config, status_container)
-                        status_container.success(f"✅ Created {len(created_indexes)} indexes")
-                        
-                        if st.session_state.upload_cancelled:
-                            raise Exception("Upload cancelled by user")
-                        
-                        # Step 4.5: Refresh materialized views if configured
-                        if 'refresh_views' in config and config['refresh_views']:
-                            status_text.text("🔄 Refreshing materialized views...")
-                            progress_bar.progress(85)
-                            try:
-                                cursor = conn.cursor()
-                                for view_name in config['refresh_views']:
-                                    status_container.info(f"🔄 Refreshing {view_name}...")
-                                    cursor.execute(f"REFRESH MATERIALIZED VIEW {view_name}")
-                                    conn.commit()
-                                cursor.close()
-                                status_container.success(f"✅ Refreshed {len(config['refresh_views'])} materialized views")
-                            except Exception as e:
-                                status_container.error(f"❌ View refresh failed: {str(e)}")
-                                raise e
-
-                            # Step 4.6: Run post-upload SQL if configured
-                        if 'post_upload_sql' in config:
-                            status_text.text("🔧 Running post-upload commands...")
-                            progress_bar.progress(90)
-                            try:
-                                cursor = conn.cursor()
-                                # Split by semicolon and execute each command
-                                for sql_cmd in config['post_upload_sql'].split(';'):
-                                    sql_cmd = sql_cmd.strip()
-                                    if sql_cmd:
-                                        cursor.execute(sql_cmd)
-                                        conn.commit()
-                                cursor.close()
-                                status_container.success("✅ Post-upload commands executed")
-                            except Exception as e:
-                                status_container.warning(f"⚠️ Post-upload command warning: {str(e)}")
-
-                            # Step 4.7: Ensure uploaded_data_date backfilled for serial_no_dailydata
-                            if target_table in ('serial_no_dailydata', 'serial_no_dailydata'):
-                                try:
-                                    cur2 = conn.cursor()
-                                    cur2.execute(f"ALTER TABLE {target_table} ALTER COLUMN uploaded_data_date SET DEFAULT CURRENT_DATE")
-                                    # Backfill any NULLs (if column was added without default previously)
-                                    cur2.execute(f"UPDATE {target_table} SET uploaded_data_date = CURRENT_DATE WHERE uploaded_data_date IS NULL")
-                                    conn.commit()
-                                    cur2.close()
-                                    status_container.info(f"✅ Ensured uploaded_data_date is present and backfilled on {target_table}")
-                                except Exception as e:
-                                    conn.rollback()
-                                    status_container.warning(f"⚠️ Could not ensure uploaded_data_date: {str(e)[:120]}")
-                        
-                        # Step 5: Final count
-                        status_text.text("📊 Getting final count...")
-                        progress_bar.progress(95)
-                        final_count = get_table_count(target_table, target_database)
-                        
-                        # Complete
-                        progress_bar.progress(100)
-                        status_text.text("✅ Upload complete!")
-                        
-                        conn.close()
-                        st.session_state.current_connection = None
-                        st.session_state.upload_in_progress = False
-                        
-                        # Summary
+                        # Upload controls
                         st.markdown("---")
-                        st.balloons()
-                        st.success("🎉 **Data Upload Complete!**")
-                        
-                        # Metrics
-                        col1, col2, col3 = st.columns(3)
+
+                        col1, col2, col3 = st.columns([1, 2, 1])
+
                         with col1:
-                            st.metric("Backed Up", f"{backed_up:,}")
+                            if st.session_state.upload_in_progress:
+                                if st.button("🛑 CANCEL UPLOAD", type="secondary", use_container_width=True):
+                                    cancel_upload()
+                                    st.warning("⚠️ Upload cancelled by user")
+                                    st.rerun()
+
+                        can_upload = not missing_cols and not st.session_state.upload_in_progress
                         with col2:
-                            st.metric("Uploaded", f"{uploaded:,}")
-                        with col3:
-                            st.metric("Total in Table", f"{final_count:,}")
-                        
-                        # Show what was dropped and created
-                        with st.expander("🔍 Index Operations Summary", expanded=True):
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                st.markdown("**🔽 Dropped Indexes:**")
-                                for idx_name in dropped_indexes:
-                                    st.markdown(f"- `{idx_name}`")
-                            with col2:
-                                st.markdown("**🔼 Created Indexes:**")
-                                for idx_name in created_indexes:
-                                    st.markdown(f"- `{idx_name}`")
-                        
-                    except Exception as e:
-                        st.session_state.upload_in_progress = False
-                        st.session_state.current_connection = None
-                        st.error(f"❌ Upload failed: {e}")
-                        details_expander.error(f"❌ Error: {e}")
-                        
-                        # Show partial results
-                        if dropped_indexes or created_indexes:
-                            with st.expander("⚠️ Partial Operations", expanded=True):
-                                if dropped_indexes:
-                                    st.markdown(f"**Dropped:** {', '.join([f'`{i}`' for i in dropped_indexes])}")
-                                if created_indexes:
-                                    st.markdown(f"**Created:** {', '.join([f'`{i}`' for i in created_indexes])}")
-                        
-                        try:
-                            if conn:
-                                conn.close()
-                        except:
-                            pass
-                    
-            except Exception as e:
-                st.error(f"❌ Error reading file: {e}")
-    
-    # ===========================
-    # CENTURY STOCKOUT UPSERT AUTOMATION
-    # ===========================
-    st.markdown("---")
-    st.markdown("### 🔄 External DB sync for (Mysql/PHpadmin - postgresSQL) Conumable till Dashbaord data upload")
-    st.info("Pull data from MySQL tables ALERTS, ERPDATA, INVOICES, invoices_manager into PostgreSQL WH with table auto-create, incremental sync, snapshot reconciliation, dedupe, and audit logging.")
-
-    with st.expander("⚙️ Configure Source & Run Sync", expanded=False):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            mysql_host = st.text_input("MySQL Host", value="192.168.0.17", key="mysql_sync_host")
-            mysql_user = st.text_input("MySQL Username", value="misaccount", key="mysql_sync_user")
-        with c2:
-            mysql_password = st.text_input("MySQL Password", value="Inv@Central@2024", type="password", key="mysql_sync_password")
-            mysql_database = st.text_input("MySQL Database Name", value="", placeholder="Enter source database name", key="mysql_sync_db")
-        with c3:
-            sync_batch_size = st.number_input("Batch Size", min_value=1000, max_value=100000, value=20000, step=1000)
-            sync_verify_days = st.number_input("Post-Sync Verify Days", min_value=1, max_value=30, value=7, step=1)
-            selected_sync_tables = st.multiselect(
-                "Tables to Sync",
-                options=["ALERTS", "ERPDATA", "INVOICES", "invoices_manager"],
-                default=["ALERTS", "ERPDATA", "INVOICES", "invoices_manager"],
-                key="mysql_sync_tables"
-            )
-
-        st.caption("Target is fixed to PostgreSQL WH: localhost:3307 / postgres / WH")
-
-        if st.button("🚀 Run MySQL → PostgreSQL WH Sync", type="primary", use_container_width=True):
-            if not mysql_database.strip():
-                st.error("❌ Please provide MySQL Database Name.")
-            elif not selected_sync_tables:
-                st.error("❌ Please select at least one table to sync.")
-            else:
-                sync_status_box = st.container()
-                with st.spinner("Running cross-database sync..."):
-                    try:
-                        mysql_cfg = {
-                            'host': mysql_host.strip(),
-                            'user': mysql_user.strip(),
-                            'password': mysql_password,
-                            'database': mysql_database.strip()
-                        }
-
-                        pg_cfg = {
-                            'host': 'localhost',
-                            'port': 3307,
-                            'user': 'postgres',
-                            'password': 'hello',
-                            'database': 'WH'
-                        }
-
-                        sync_results = sync_mysql_tables_to_postgres(
-                            mysql_config=mysql_cfg,
-                            pg_config=pg_cfg,
-                            source_tables=selected_sync_tables,
-                            status_container=sync_status_box,
-                            batch_size=int(sync_batch_size)
-                        )
-
-                        result_df = pd.DataFrame(sync_results)
-
-                        if result_df.empty:
-                            st.warning("No sync results returned.")
-                        else:
-                            success_count = int((result_df['status'] == 'success').sum())
-                            failed_count = int((result_df['status'] == 'failed').sum())
-                            total_fetched = int(result_df['fetched_rows'].fillna(0).sum())
-                            total_inserted = int(result_df['inserted_rows'].fillna(0).sum())
-                            total_duplicates = int(result_df['duplicate_rows'].fillna(0).sum())
-                            total_deleted = int(result_df['deleted_rows'].fillna(0).sum())
-                            total_target_rows = int(result_df['target_total_rows'].fillna(0).sum()) if 'target_total_rows' in result_df.columns else 0
-
-                            st.markdown("#### ✅ Sync Execution Summary")
-                            m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
-                            m1.metric("Tables Success", success_count)
-                            m2.metric("Tables Failed", failed_count)
-                            m3.metric("Rows Fetched", f"{total_fetched:,}")
-                            m4.metric("Rows Inserted", f"{total_inserted:,}")
-                            m5.metric("Duplicates Skipped", f"{total_duplicates:,}")
-                            m6.metric("Stale Deleted", f"{total_deleted:,}", help="Snapshot reconciliation: removed rows that no longer exist in MySQL")
-                            m7.metric("Rows In Target", f"{total_target_rows:,}", help="Current total rows in PostgreSQL target tables after sync")
-
-                            display_cols = [
-                                'source_table', 'target_table', 'strategy',
-                                'fetched_rows', 'inserted_rows', 'duplicate_rows', 'deleted_rows',
-                                'source_total_rows', 'target_total_rows', 'sync_note',
-                                'status', 'error', 'started_at', 'finished_at'
-                            ]
-                            existing_cols = [c for c in display_cols if c in result_df.columns]
-
-                            st.markdown("#### 📋 Per-Table Detailed Result")
-                            st.dataframe(result_df[existing_cols], use_container_width=True)
-
-                            st.markdown("#### 🧪 Post-Sync Verification (Date + Shop Counts)")
-                            verify_summary_df, verify_detail_df = verify_mysql_postgres_sync_by_day_shop(
-                                mysql_config=mysql_cfg,
-                                pg_config=pg_cfg,
-                                source_tables=selected_sync_tables,
-                                lookback_days=int(sync_verify_days)
+                            upload_btn = st.button(
+                                "🚀 START DATA UPLOAD",
+                                type="primary",
+                                use_container_width=True,
+                                disabled=not can_upload
                             )
 
-                            if verify_summary_df.empty:
-                                st.warning("No verification summary returned.")
-                            else:
-                                st.dataframe(verify_summary_df, use_container_width=True)
-
-                            if verify_detail_df.empty:
-                                st.success("✅ Post-sync verification passed: no date/shop count mismatches found.")
-                            else:
-                                st.error(f"❌ Found {len(verify_detail_df):,} date/shop mismatch groups. Review details below.")
-                                st.dataframe(verify_detail_df, use_container_width=True)
-
-                                st.markdown("#### 🧾 Offloading vs Loading (delta > 0) Dedup Preview")
-                                delta_preview_df = build_offloading_positive_delta_preview(pg_cfg, verify_detail_df)
-                                if delta_preview_df.empty:
-                                    st.info("No Offloading vs Loading rows with delta > 0 found for append.")
-                                else:
-                                    new_count = int((delta_preview_df['dedup_status'] == 'NEW').sum())
-                                    dup_count = int((delta_preview_df['dedup_status'] == 'ALREADY_EXISTS').sum())
-                                    c1, c2, c3 = st.columns(3)
-                                    c1.metric("Rows in Preview", f"{len(delta_preview_df):,}")
-                                    c2.metric("NEW (Will Insert)", f"{new_count:,}")
-                                    c3.metric("Already Exists", f"{dup_count:,}")
-
-                                    st.dataframe(delta_preview_df, use_container_width=True)
-
-                                    if new_count > 0:
-                                        if st.button("✅ Confirm Append NEW Offloading Delta Rows", key="confirm_append_offloading_delta_rows"):
-                                            appended_rows = append_confirmed_offloading_deltas(pg_cfg, delta_preview_df)
-                                            if appended_rows > 0:
-                                                st.success(f"📝 Inserted {appended_rows:,} NEW row(s) into external_sync_delta_log.")
-                                            else:
-                                                st.warning("No rows inserted. Please retry or check DB connection.")
-                                    else:
-                                        st.info("All preview rows already exist in PostgreSQL log. Nothing new to insert.")
-
-                                st.markdown("#### 📥 Invoices* Positive Delta Backfill (MySQL → PostgreSQL)")
-                                invoices_preview_df = build_invoices_positive_delta_group_preview(pg_cfg, verify_detail_df)
-                                if invoices_preview_df.empty:
-                                    st.info("No invoices* groups with delta > 0 found for backfill.")
-                                else:
-                                    inv_new = int((invoices_preview_df['dedup_status'] == 'NEW_GROUP').sum())
-                                    inv_old = int((invoices_preview_df['dedup_status'] == 'ALREADY_REPAIRED').sum())
-                                    i1, i2, i3 = st.columns(3)
-                                    i1.metric("Invoices Groups in Preview", f"{len(invoices_preview_df):,}")
-                                    i2.metric("NEW_GROUP (Will Backfill)", f"{inv_new:,}")
-                                    i3.metric("Already Repaired", f"{inv_old:,}")
-
-                                    st.dataframe(invoices_preview_df, use_container_width=True)
-
-                                    if inv_new > 0:
-                                        if st.button("✅ Confirm Fetch Missing Invoices Rows (delta > 0)", key="confirm_fetch_missing_invoices_delta"):
-                                            repair_result = repair_invoices_positive_delta_groups(
-                                                mysql_config=mysql_cfg,
-                                                pg_config=pg_cfg,
-                                                preview_df=invoices_preview_df,
-                                                batch_size=int(sync_batch_size),
-                                            )
-                                            st.success(
-                                                f"Invoices backfill done · groups processed: {repair_result['groups_processed']:,}/{repair_result['groups_total']:,}, "
-                                                f"rows fetched: {repair_result['rows_fetched']:,}, rows inserted: {repair_result['rows_inserted']:,}."
-                                            )
-                                            if repair_result['groups_failed'] > 0:
-                                                st.warning(f"{repair_result['groups_failed']:,} group(s) failed. Check external_sync_repair_log for details.")
-                                    else:
-                                        st.info("All invoices* positive-delta groups were already repaired earlier.")
-
-                            with st.expander("🧠 DBA Notes / What Happened", expanded=True):
-                                st.markdown("- Source tables were introspected from MySQL schema.")
-                                st.markdown("- Destination tables were created automatically in PostgreSQL WH if missing.")
-                                st.markdown("- Sync uses append-only date logic: pull only MySQL rows with date greater than PostgreSQL max date.")
-                                st.markdown("- No stale-row deletion or source-side reconciliation is performed in this flow.")
-                                st.markdown("- Duplicate prevention is applied via PK conflict handling and source-row hash uniqueness.")
-                                st.markdown("- Post-sync verification compares MySQL vs PostgreSQL counts grouped by date and shop.")
-                                st.markdown("- Sync state and execution logs were written to `external_sync_state` and `external_sync_log`.")
-
-                            if failed_count > 0:
-                                st.error("Some tables failed. Check the Error column in the detailed report.")
-                            else:
-                                st.success("🎉 All selected tables synchronized successfully.")
-
-                            # ── Auto-refresh WH materialized views after sync ──
-                            WH_VIEWS_TO_REFRESH = [
-                                "mv_wh_alerts_daily",
-                                "mv_wh_erp_cashier_sessions_daily",
-                                "mv_wh_erp_daily",
-                                "mv_wh_erp_test_bills_cashier_daily",
-                                "mv_wh_invoices_agg_daily",
-                                "mv_wh_manager_handover_daily",
-                            ]
-                            st.markdown("#### 🔄 Refreshing WH Materialized Views")
-                            mv_results = []
-                            try:
-                                mv_conn = psycopg2.connect(
-                                    host=pg_cfg['host'], port=pg_cfg['port'],
-                                    user=pg_cfg['user'], password=pg_cfg['password'],
-                                    dbname=pg_cfg['database']
-                                )
-                                mv_cur = mv_conn.cursor()
-                                for view_name in WH_VIEWS_TO_REFRESH:
-                                    try:
-                                        mv_cur.execute(f"REFRESH MATERIALIZED VIEW {view_name}")
-                                        mv_conn.commit()
-                                        mv_results.append({"view": view_name, "status": "✅ refreshed"})
-                                    except Exception as ve:
-                                        mv_conn.rollback()
-                                        mv_results.append({"view": view_name, "status": f"⚠️ {ve}"})
-                                mv_cur.close()
-                                mv_conn.close()
-                            except Exception as mv_err:
-                                st.error(f"❌ Could not connect for MV refresh: {mv_err}")
-                                mv_results = []
-
-                            if mv_results:
-                                ok = sum(1 for r in mv_results if r["status"].startswith("✅"))
-                                st.dataframe(mv_results, use_container_width=True)
-                                if ok == len(mv_results):
-                                    st.success(f"✅ All {ok} WH materialized views refreshed.")
-                                else:
-                                    st.warning(f"⚠️ {ok}/{len(mv_results)} views refreshed — see table above for errors.")
-
-                    except Exception as sync_error:
-                        st.error(f"❌ Sync failed: {sync_error}")
-
-    st.markdown("---")
-    st.markdown("### 🔁 Delete & Re-Fetch from Date")
-    st.caption("Permanently deletes PostgreSQL WH rows from the chosen date onwards and re-imports fresh from MySQL.")
-    with st.expander("⚙️ Configure & Run Date Reset", expanded=False):
-        st.warning("⚠️ **Destructive — irreversible.** Rows deleted from PostgreSQL cannot be recovered from this tool. Confirm MySQL source is accessible before proceeding.")
-        rf_c1, rf_c2 = st.columns(2)
-        with rf_c1:
-            refetch_from_date = st.date_input(
-                "Re-fetch from date (inclusive)", value=date(2026, 4, 1), key="refetch_from_date"
-            )
-            refetch_tables = st.multiselect(
-                "Tables to reset",
-                options=["ALERTS", "ERPDATA", "INVOICES", "invoices_manager"],
-                default=["ALERTS", "ERPDATA", "INVOICES", "invoices_manager"],
-                key="refetch_tables",
-            )
-        with rf_c2:
-            rf_mysql_host     = st.text_input("MySQL Host",     value="192.168.0.17",      key="rf_mysql_host")
-            rf_mysql_user     = st.text_input("MySQL User",     value="misaccount",         key="rf_mysql_user")
-            rf_mysql_password = st.text_input("MySQL Password", type="password",
-                                              value="Inv@Central@2024",                     key="rf_mysql_password")
-            rf_mysql_db       = st.text_input("MySQL Database", value="",
-                                              placeholder="e.g. invcentral",                key="rf_mysql_db")
-
-        pg_cfg_rf = {'host': 'localhost', 'port': 3307, 'user': 'postgres',
-                     'password': 'hello', 'database': 'WH'}
-        RF_PG_DATE_COLS = {
-            'alerts': 'a_entrytime', 'erpdata': 'invdate',
-            'invoices': 'invdate',   'invoices_manager': 'invdate',
-        }
-
-        if st.button("🔍 Preview Rows to Delete", key="btn_preview_delete"):
-            preview_rows = []
-            try:
-                with psycopg2.connect(**pg_cfg_rf) as _pconn:
-                    with _pconn.cursor() as _pcur:
-                        for _tbl in (refetch_tables or []):
-                            _col = RF_PG_DATE_COLS.get(_tbl.lower(), 'invdate')
-                            try:
-                                _pcur.execute(
-                                    f"SELECT COUNT(*) FROM {_quote_ident(_tbl.lower())} "
-                                    f"WHERE {_quote_ident(_col)}::date >= %s",
-                                    (str(refetch_from_date),)
-                                )
-                                _cnt = _pcur.fetchone()[0]
-                            except Exception as _te:
-                                _cnt = f"Error: {_te}"
-                            preview_rows.append({
-                                'table': _tbl.lower(), 'date_col': _col,
-                                'rows_that_will_be_deleted': _cnt,
-                            })
-                st.dataframe(preview_rows, use_container_width=True)
-            except Exception as _e:
-                st.error(f"Preview failed: {_e}")
-
-        if st.button("✅ CONFIRM: Delete & Re-Fetch", type="primary", key="btn_confirm_delete_refetch"):
-            if not rf_mysql_db.strip():
-                st.error("❌ MySQL Database Name required.")
-            elif not refetch_tables:
-                st.error("❌ Select at least one table.")
-            else:
-                mysql_cfg_rf = {
-                    'host': rf_mysql_host.strip(), 'user': rf_mysql_user.strip(),
-                    'password': rf_mysql_password, 'database': rf_mysql_db.strip(),
-                }
-                rf_status_box = st.container()
-                with st.spinner("Deleting and re-fetching data from MySQL..."):
-                    try:
-                        rf_results = delete_and_refetch_tables_from_date(
-                            mysql_config=mysql_cfg_rf,
-                            pg_config=pg_cfg_rf,
-                            from_date_str=str(refetch_from_date),
-                            tables=refetch_tables,
-                            batch_size=20000,
-                            status_container=rf_status_box,
-                        )
-                        st.success("✅ Delete & Re-Fetch complete.")
-                        st.dataframe(pd.DataFrame(rf_results), use_container_width=True)
-                    except Exception as rf_err:
-                        st.error(f"❌ Failed: {rf_err}")
-
-    st.markdown("---")
-    st.markdown("### 🎯 Century Stockout Daily UPSERT")
-    st.info("Automatically run daily stockout tracking UPSERT for Century Penetration dashboard")
-    
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        st.markdown("""
-        **What this does:**
-        - Updates `mv_century_penetration_test` with current stock status
-        - Records stockout dates and calculates days out of stock
-        - Appends daily snapshot to `century_stockout_daily_snapshot`
-        - Refreshes `mv_stockout_analysis` materialized view
-        - Enables 7-day trend chart in Century dashboard
-        """)
-    
-    with col2:
-        # Check if tables exist
-        try:
-            conn = psycopg2.connect(**DB_CONFIG, database='century_penetration')
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT COUNT(*) FROM information_schema.tables 
-                WHERE table_name = 'mv_century_penetration_test'
-            """)
-            table_exists = cur.fetchone()[0] > 0
-            
-            if table_exists:
-                cur.execute("SELECT COUNT(*) FROM century_stockout_daily_snapshot")
-                snapshot_count = cur.fetchone()[0]
-                cur.execute("SELECT COUNT(DISTINCT snapshot_date) FROM century_stockout_daily_snapshot")
-                days_tracked = cur.fetchone()[0]
-                st.metric("Snapshots", f"{snapshot_count:,}")
-                st.metric("Days Tracked", days_tracked)
-            
-            cur.close()
-            conn.close()
-        except Exception as e:
-            st.warning(f"⚠️ Century tables not found: {str(e)[:100]}")
-    
-    # UPSERT button
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col2:
-        if st.button("🚀 Run Daily UPSERT", use_container_width=True, type="primary"):
-            with st.spinner("Running Century Stockout UPSERT..."):
-                try:
-                    import subprocess
-                    import os
-                    
-                    # Path to the UPSERT script
-                    script_path = os.path.join("centurypenetration", "daily_stockout_upsert.py")
-                    
-                    if os.path.exists(script_path):
-                        # Run the script
-                        result = subprocess.run(
-                            ["python", script_path],
-                            capture_output=True,
-                            text=True,
-                            timeout=300  # 5 minutes timeout
-                        )
-                        
-                        if result.returncode == 0:
-                            st.success("✅ UPSERT completed successfully!")
-                            
-                            # Parse output for statistics
-                            output_lines = result.stdout.split('\\n')
-                            for line in output_lines:
-                                if "Total Items:" in line or "Current Stockouts:" in line or \
-                                   "UPSERT completed:" in line or "Daily snapshot appended:" in line:
-                                    st.code(line)
-                            
-                            # Show full output in expander
-                            with st.expander("📄 Full Output"):
-                                st.code(result.stdout)
-                        else:
-                            st.error(f"❌ UPSERT failed with return code {result.returncode}")
-                            st.code(result.stderr)
-                    else:
-                        st.error(f"❌ Script not found: {script_path}")
-                        st.info("💡 Make sure `centurypenetration/daily_stockout_upsert.py` exists")
-                
-                except subprocess.TimeoutExpired:
-                    st.error("❌ UPSERT timed out after 5 minutes")
-                except Exception as e:
-                    st.error(f"❌ Error running UPSERT: {e}")
-    
-    # Schedule automation tip
-    with st.expander("⏰ Schedule Daily Automation"):
-        st.markdown("""
-        **Option 1: Windows Task Scheduler**
-        ```powershell
-        # Run batch file: centurypenetration/run_daily_stockout_update.bat
-        # Schedule: Daily at 1:00 AM
-        ```
-        
-        **Option 2: Python Script**
-        ```python
-        import schedule
-        import time
-        import subprocess
-        
-        def run_upsert():
-            subprocess.run(["python", "centurypenetration/daily_stockout_upsert.py"])
-        
-        schedule.every().day.at("01:00").do(run_upsert)
-        
-        while True:
-            schedule.run_pending()
-            time.sleep(60)
-        ```
-        
-        **Option 3: Manual**
-        - Click "🚀 Run Daily UPSERT" button above once per day
-        - Best time: Morning (8 AM) or after midnight (1 AM)
-        """)
-
-# ===========================
-# TAB 3: INDEX MANAGER
-# ===========================
-with tab3:
-    st.markdown("### 🔧 Index Manager")
-    st.info("Create database indexes by pasting SQL queries")
-    
-    # Table selection
-    selected_table_idx = st.selectbox(
-        "Select Table",
-        options=list(TABLE_CONFIGS.keys()),
-        key="idx_table_select",
-        help="Choose the table for index operations"
-    )
-    
-    if selected_table_idx:
-        config = TABLE_CONFIGS[selected_table_idx]
-        target_table = config.get('target_table', selected_table_idx)
-        target_database = config.get('database', 'salesdata')
-        
-        # Show current row count and latest date
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            current_count = get_table_count(target_table, target_database)
-            if current_count is not None:
-                st.metric("Current Row Count", f"{current_count:,}")
-        
-        with col2:
-            if 'date_column' in config:
-                latest_date = get_latest_date(target_table, config['date_column'], target_database)
-                if latest_date:
-                    st.metric("Latest Date", latest_date.strftime('%Y-%m-%d') if hasattr(latest_date, 'strftime') else str(latest_date))
-        
-        st.markdown("---")
-        
-        # Query input
-        st.markdown("**Paste Index Creation Queries:**")
-        st.caption("You can paste multiple CREATE INDEX statements separated by semicolons")
-        
-        index_queries = st.text_area(
-            "SQL Queries",
-            height=200,
-            placeholder="CREATE INDEX idx_name ON table_name (column_name);\nCREATE INDEX idx_name2 ON table_name (column1, column2);",
-            help="Paste one or more CREATE INDEX statements"
-        )
-        
-        if index_queries.strip():
-            # Split by semicolon
-            queries = [q.strip() for q in index_queries.split(';') if q.strip()]
-            st.info(f"📝 Found {len(queries)} query(ies)")
-            
-            # Show preview
-            with st.expander("👁️ Preview Queries", expanded=False):
-                for i, q in enumerate(queries, 1):
-                    st.code(q, language='sql')
-            
-            # Execute button
-            col1, col2, col3 = st.columns([1, 2, 1])
-            
-            with col2:
-                if st.button("🚀 Execute Queries", type="primary", use_container_width=True):
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
-                    
-                    try:
-                        status_text.text("🔗 Connecting to database...")
-                        conn = psycopg2.connect(**DB_CONFIG)
-                        
-                        success_count = 0
-                        fail_count = 0
-                        
-                        for i, query in enumerate(queries, 1):
-                            if st.session_state.upload_cancelled:
-                                break
-                            
-                            progress = int((i / len(queries)) * 100)
-                            progress_bar.progress(progress)
-                            status_text.text(f"⚙️ Executing query {i}/{len(queries)}...")
-                            
-                            result_container = st.empty()
-                            if execute_index_query(conn, query, result_container):
-                                result_container.success(f"✅ Query {i} executed successfully")
-                                success_count += 1
-                            else:
-                                result_container.error(f"❌ Query {i} failed")
-                                fail_count += 1
-                        
-                        conn.close()
-                        progress_bar.progress(100)
-                        status_text.text("✅ All queries processed!")
-                        
-                        # Summary
-                        st.markdown("---")
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Total Queries", len(queries))
-                        with col2:
-                            st.metric("✅ Successful", success_count)
                         with col3:
-                            st.metric("❌ Failed", fail_count)
-                        
-                        if success_count == len(queries):
-                            st.balloons()
-                            st.success("🎉 All indexes created successfully!")
-                        
+                            st.markdown("")  # Spacer
+
+                        if missing_cols:
+                            st.warning("Upload disabled until all required columns are present.")
+
+                        if upload_btn and not st.session_state.upload_in_progress:
+                            st.session_state.upload_cancelled = False
+                            st.session_state.upload_in_progress = True
+
+                            # Create containers for better visibility
+                            progress_container = st.container()
+                            status_container = st.container()
+                            details_container = st.container()
+
+                            with progress_container:
+                                progress_bar = st.progress(0)
+                                status_text = st.empty()
+
+                            with details_container:
+                                details_expander = st.expander("📋 Detailed Log", expanded=True)
+
+                            dropped_indexes = []
+                            created_indexes = []
+                            backed_up = 0
+                            uploaded = 0
+
+                            try:
+                                # Connect to database (use specific database if configured)
+                                status_text.text("🔗 Connecting to database...")
+                                progress_bar.progress(5)
+                                db_config = DB_CONFIG.copy()
+                                target_database = config.get('database', 'salesdata')
+                                db_config['database'] = target_database
+                                conn = psycopg2.connect(**db_config)
+                                st.session_state.current_connection = conn
+                                status_container.success(f"✅ Connected to database: {target_database}")
+
+                                # Get target table name (may differ from config key)
+                                target_table = config.get('target_table', selected_table)
+
+                                if st.session_state.upload_cancelled:
+                                    raise Exception("Upload cancelled by user")
+
+                                # Step 1: Drop indexes
+                                status_text.text("🔽 Dropping indexes...")
+                                progress_bar.progress(15)
+                                dropped_indexes = drop_indexes(conn, config, status_container)
+                                status_container.success(f"✅ Dropped {len(dropped_indexes)} indexes")
+
+                                if st.session_state.upload_cancelled:
+                                    raise Exception("Upload cancelled by user")
+
+                                # Step 2: Backup existing data
+                                upload_mode = config.get('upload_mode', 'incremental')
+                                mode_text = "APPEND" if upload_mode == "append" else ("TRUNCATE" if upload_mode == "truncate" else "INCREMENTAL")
+                                status_text.text(f"💾 Backing up data ({mode_text} mode)...")
+                                progress_bar.progress(35)
+                                backed_up = backup_existing_data(conn, target_table, config['backup_table'], upload_mode, status_container, config.get('date_column'))
+                                if upload_mode == "truncate":
+                                    status_container.success(f"✅ Backed up {backed_up:,} rows and truncated table")
+                                elif upload_mode == "append":
+                                    status_container.success(f"✅ Append mode: Ready to upload")
+                                else:
+                                    status_container.success(f"✅ Backed up {backed_up:,} rows")
+
+                                if st.session_state.upload_cancelled:
+                                    raise Exception("Upload cancelled by user")
+
+                                # Step 3: Upload new data
+                                status_text.text("📤 Uploading data...")
+                                progress_bar.progress(55)
+
+                                # Use lowercase column names for selection (after normalization)
+                                df_upload = df[config_columns_lower].copy()
+
+                                # For serial tables, convert DataFrame column names to lowercase to match table schema
+                                if selected_table in ['serial_no_dailydata', 'whreceived_serialno', 'serialno_check_yes_no']:
+                                    df_upload.columns = [col.lower() for col in df_upload.columns]
+
+                                # Apply column mapping if configured
+                                if 'column_mapping' in config:
+                                    df_upload = df_upload.rename(columns=config['column_mapping'])
+                                    mapped_columns = [config['column_mapping'].get(col, col) for col in config['columns']]
+                                else:
+                                    mapped_columns = config['columns']
+
+                                # For serial tables, ensure mapped_columns are also lowercase
+                                if selected_table in ['serial_no_dailydata', 'whreceived_serialno', 'serialno_check_yes_no']:
+                                    mapped_columns = [col.lower() for col in mapped_columns]
+
+                                # Parse date columns for serial tables before upload
+                                if selected_table in ['serial_no_dailydata', 'whreceived_serialno', 'serialno_check_yes_no'] and 'parse_dates' in config:
+                                    dayfirst = config.get('date_parse_dayfirst', True)
+                                    prefer_month_first_cols = {c.lower() for c in config.get('prefer_month_first_dates', [])}
+                                    # force_day_first_cols: pandas ignores dayfirst=True for ambiguous dates
+                                    # (e.g. 01/05 where both ≤12). Use explicit DD/MM/YYYY format instead.
+                                    force_day_first_cols = {c.lower() for c in config.get('prefer_day_first_dates', [])}
+                                    for date_col in config['parse_dates']:
+                                        col_lower = date_col.lower()
+                                        if col_lower in df_upload.columns:
+                                            try:
+                                                prefer_month_first = col_lower in prefer_month_first_cols
+                                                force_day_first    = col_lower in force_day_first_cols
+                                                if prefer_month_first:
+                                                    df_upload[col_lower] = parse_mixed_date_series(df_upload[col_lower], prefer_month_first=True)
+                                                elif force_day_first:
+                                                    # Pandas silently ignores dayfirst=True for ambiguous dates.
+                                                    # Explicitly try DD/MM/YYYY first, then fall back to dayfirst=True.
+                                                    s = df_upload[col_lower].astype(str).str.strip()
+                                                    parsed = pd.to_datetime(s, format='%d/%m/%Y', errors='coerce')
+                                                    still_null = parsed.isna() & s.notna() & (s != 'nan') & (s != 'NaT')
+                                                    if still_null.any():
+                                                        parsed[still_null] = pd.to_datetime(s[still_null], dayfirst=True, errors='coerce')
+                                                    df_upload[col_lower] = parsed
+                                                else:
+                                                    df_upload[col_lower] = pd.to_datetime(df_upload[col_lower], dayfirst=dayfirst, errors='coerce')
+                                                # Convert to string format for PostgreSQL (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)
+                                                if col_lower == 'loaded_datetime':
+                                                    df_upload[col_lower] = df_upload[col_lower].dt.strftime('%Y-%m-%d %H:%M:%S')
+                                                else:
+                                                    df_upload[col_lower] = df_upload[col_lower].dt.strftime('%Y-%m-%d')
+                                                if prefer_month_first:
+                                                    status_container.info(f"✅ Parsed date column '{col_lower}' (MM/DD priority)")
+                                                elif force_day_first:
+                                                    status_container.info(f"✅ Parsed date column '{col_lower}' (DD/MM forced)")
+                                                else:
+                                                    status_container.info(f"✅ Parsed date column '{col_lower}'")
+                                            except Exception as date_err:
+                                                status_container.warning(f"⚠️ Could not parse date column '{col_lower}': {str(date_err)[:100]}")
+
+                                # Remove rows with all null values or empty rows
+                                rows_before = len(df_upload)
+                                df_upload = df_upload.dropna(how='all')  # Drop rows where all columns are null
+                                df_upload = df_upload[df_upload.astype(str).ne('').any(axis=1)]  # Drop rows with all empty strings
+                                rows_after = len(df_upload)
+                                if rows_before > rows_after:
+                                    status_container.info(f"ℹ️ Skipped {rows_before - rows_after:,} empty rows")
+
+                                # Apply data type conversions if configured (case-insensitive to match normalized columns)
+                                if 'type_conversions' in config:
+                                    for col, dtype in config['type_conversions'].items():
+                                        matching_cols = [c for c in df_upload.columns if c.lower() == col.lower()]
+                                        for actual_col in matching_cols:
+                                            numeric_series = pd.to_numeric(df_upload[actual_col], errors='coerce')
+                                            if dtype == 'int':
+                                                df_upload[actual_col] = numeric_series.fillna(0).astype(int)
+                                            elif dtype == 'float':
+                                                df_upload[actual_col] = numeric_series
+
+                                # Check if table is partitioned
+                                is_partitioned = config.get('is_partitioned', False)
+                                add_upload_date = config.get('add_upload_date', False)
+
+                                # Note: For serial_no_dailydata, UPSERT logic handles updates without pre-deletion
+                                # CSV data will update existing serial_no records and insert new ones
+
+                                uploaded = upload_data_to_table(
+                                    conn,
+                                    target_table,
+                                    df_upload,
+                                    mapped_columns,
+                                    status_container,
+                                    is_partitioned,
+                                    target_database,
+                                    add_upload_date,
+                                    table_config=config,
+                                    source_file_name=file_name,
+                                )
+                                status_container.success(f"✅ Uploaded {uploaded:,} rows")
+
+                                if st.session_state.upload_cancelled:
+                                    raise Exception("Upload cancelled by user")
+
+                                # Step 4: Recreate indexes
+                                status_text.text("🔼 Creating indexes...")
+                                progress_bar.progress(75)
+                                created_indexes = create_indexes(conn, config, status_container)
+                                status_container.success(f"✅ Created {len(created_indexes)} indexes")
+
+                                if st.session_state.upload_cancelled:
+                                    raise Exception("Upload cancelled by user")
+
+                                # Step 4.5: Refresh materialized views if configured
+                                if 'refresh_views' in config and config['refresh_views']:
+                                    status_text.text("🔄 Refreshing materialized views...")
+                                    progress_bar.progress(85)
+                                    try:
+                                        cursor = conn.cursor()
+                                        for view_name in config['refresh_views']:
+                                            status_container.info(f"🔄 Refreshing {view_name}...")
+                                            cursor.execute(f"REFRESH MATERIALIZED VIEW {view_name}")
+                                            conn.commit()
+                                        cursor.close()
+                                        status_container.success(f"✅ Refreshed {len(config['refresh_views'])} materialized views")
+                                    except Exception as e:
+                                        status_container.error(f"❌ View refresh failed: {str(e)}")
+                                        raise e
+
+                                    # Step 4.6: Run post-upload SQL if configured
+                                if 'post_upload_sql' in config:
+                                    status_text.text("🔧 Running post-upload commands...")
+                                    progress_bar.progress(90)
+                                    try:
+                                        cursor = conn.cursor()
+
+                                        # Smart splitter: split by ; but never inside $$...$$
+                                        def _split_sql(sql):
+                                            stmts, buf, depth = [], [], 0
+                                            i = 0
+                                            while i < len(sql):
+                                                if sql[i] == '$' and not depth:
+                                                    j = i + 1
+                                                    while j < len(sql) and (sql[j].isalnum() or sql[j] == '_'):
+                                                        j += 1
+                                                    if j < len(sql) and sql[j] == '$':
+                                                        tag = sql[i:j+1]
+                                                        buf.append(tag); i = j + 1; depth += 1
+                                                        continue
+                                                elif depth and sql[i] == '$':
+                                                    j = i + 1
+                                                    while j < len(sql) and (sql[j].isalnum() or sql[j] == '_'):
+                                                        j += 1
+                                                    if j < len(sql) and sql[j] == '$':
+                                                        tag = sql[i:j+1]
+                                                        buf.append(tag); i = j + 1; depth -= 1
+                                                        continue
+                                                if sql[i] == ';' and not depth:
+                                                    s = ''.join(buf).strip()
+                                                    if s:
+                                                        stmts.append(s)
+                                                    buf = []
+                                                else:
+                                                    buf.append(sql[i])
+                                                i += 1
+                                            s = ''.join(buf).strip()
+                                            if s:
+                                                stmts.append(s)
+                                            return stmts
+
+                                        for sql_cmd in _split_sql(config['post_upload_sql']):
+                                            cursor.execute(sql_cmd)
+                                            conn.commit()
+                                        cursor.close()
+                                        status_container.success("✅ Post-upload commands executed")
+                                    except Exception as e:
+                                        status_container.warning(f"⚠️ Post-upload command warning: {str(e)}")
+
+                                        # Step 4.7: Compare CSV staging data to uploaded rows in serial_no_dailydata
+                                        if target_table == 'serial_no_dailydata':
+                                            try:
+                                                compare_cursor = conn.cursor()
+                                                compare_cursor.execute(
+                                                    """
+                                                    WITH loading_range AS (
+                                                        SELECT
+                                                            MIN(loadingdate) AS min_date,
+                                                            MAX(loadingdate) AS max_date
+                                                        FROM serial_no_dailydata_staging
+                                                        WHERE loadingdate IS NOT NULL
+                                                    )
+                                                    SELECT
+                                                        (SELECT COUNT(*) FROM serial_no_dailydata_staging) AS staging_count,
+                                                        (SELECT COUNT(*) FROM serial_no_dailydata
+                                                         WHERE loadingdate >= loading_range.min_date
+                                                           AND loadingdate <= loading_range.max_date) AS main_range_count,
+                                                        loading_range.min_date,
+                                                        loading_range.max_date
+                                                    FROM loading_range;
+                                                    """
+                                                )
+                                                staging_count, main_range_count, min_date, max_date = compare_cursor.fetchone()
+                                                compare_cursor.close()
+
+                                                if min_date is not None and max_date is not None:
+                                                    status_container.info(
+                                                        f"📌 LOADINGDATE range compared: {min_date} to {max_date}. "
+                                                        f"CSV rows = {staging_count:,}, main table rows in range = {main_range_count:,}."
+                                                    )
+                                                    if staging_count == main_range_count:
+                                                        status_container.success("✅ CSV staging row count matches uploaded rows in the target LOADINGDATE range.")
+                                                    else:
+                                                        status_container.warning(
+                                                            f"⚠️ Row count mismatch: CSV staging has {staging_count:,} rows, "
+                                                            f"but {main_range_count:,} rows exist in serial_no_dailydata for the same LOADINGDATE range."
+                                                        )
+                                                else:
+                                                    status_container.warning("⚠️ Could not determine LOADINGDATE range from CSV staging data for comparison.")
+                                            except Exception as e:
+                                                status_container.warning(f"⚠️ Could not compare CSV staging data with serial_no_dailydata: {str(e)[:120]}")
+
+                                        # Step 4.8: Ensure uploaded_data_date backfilled for serial_no_dailydata
+                                final_count = get_table_count(target_table, target_database)
+
+                                # Complete
+                                progress_bar.progress(100)
+                                status_text.text("✅ Upload complete!")
+
+                                conn.close()
+                                st.session_state.current_connection = None
+                                st.session_state.upload_in_progress = False
+
+                                # Summary
+                                st.markdown("---")
+                                st.balloons()
+                                st.success("🎉 **Data Upload Complete!**")
+
+                                # Metrics
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    st.metric("Backed Up", f"{backed_up:,}")
+                                with col2:
+                                    st.metric("Uploaded", f"{uploaded:,}")
+                                with col3:
+                                    st.metric("Total in Table", f"{final_count:,}")
+
+                                # Show what was dropped and created
+                                with st.expander("🔍 Index Operations Summary", expanded=True):
+                                    col1, col2 = st.columns(2)
+                                    with col1:
+                                        st.markdown("**🔽 Dropped Indexes:**")
+                                        for idx_name in dropped_indexes:
+                                            st.markdown(f"- `{idx_name}`")
+                                    with col2:
+                                        st.markdown("**🔼 Created Indexes:**")
+                                        for idx_name in created_indexes:
+                                            st.markdown(f"- `{idx_name}`")
+
+                            except Exception as e:
+                                st.session_state.upload_in_progress = False
+                                st.session_state.current_connection = None
+                                st.error(f"❌ Upload failed: {e}")
+                                details_expander.error(f"❌ Error: {e}")
+
+                                # Show partial results
+                                if dropped_indexes or created_indexes:
+                                    with st.expander("⚠️ Partial Operations", expanded=True):
+                                        if dropped_indexes:
+                                            st.markdown(f"**Dropped:** {', '.join([f'`{i}`' for i in dropped_indexes])}")
+                                        if created_indexes:
+                                            st.markdown(f"**Created:** {', '.join([f'`{i}`' for i in created_indexes])}")
+
+                                try:
+                                    if conn:
+                                        conn.close()
+                                except:
+                                    pass
+
                     except Exception as e:
-                        st.error(f"❌ Error: {e}")
+                        st.error(f"❌ Error reading file: {e}")
+
+            # ===========================
+            # CENTURY STOCKOUT UPSERT AUTOMATION
+            # ===========================
+            st.markdown("---")
+            st.markdown("### 🔄 External DB sync for (Mysql/PHpadmin - postgresSQL) Conumable till Dashbaord data upload")
+            st.info("Pull data from MySQL tables ALERTS, ERPDATA, INVOICES, invoices_manager into PostgreSQL WH with table auto-create, incremental sync, snapshot reconciliation, dedupe, and audit logging.")
+
+            with st.expander("⚙️ Configure Source & Run Sync", expanded=False):
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    mysql_host = st.text_input("MySQL Host", value="192.168.0.17", key="mysql_sync_host")
+                    mysql_user = st.text_input("MySQL Username", value="misaccount", key="mysql_sync_user")
+                with c2:
+                    mysql_password = st.text_input("MySQL Password", value="Inv@Central@2024", type="password", key="mysql_sync_password")
+                    mysql_database = st.text_input("MySQL Database Name", value="", placeholder="Enter source database name", key="mysql_sync_db")
+                with c3:
+                    sync_batch_size = st.number_input("Batch Size", min_value=1000, max_value=100000, value=20000, step=1000)
+                    sync_verify_days = st.number_input("Post-Sync Verify Days", min_value=1, max_value=30, value=7, step=1)
+                    selected_sync_tables = st.multiselect(
+                        "Tables to Sync",
+                        options=["ALERTS", "ERPDATA", "INVOICES", "invoices_manager"],
+                        default=["ALERTS", "ERPDATA", "INVOICES", "invoices_manager"],
+                        key="mysql_sync_tables"
+                    )
+
+                st.caption("Target is fixed to PostgreSQL WH: localhost:3307 / postgres / WH")
+
+                if st.button("🚀 Run MySQL → PostgreSQL WH Sync", type="primary", use_container_width=True):
+                    if not mysql_database.strip():
+                        st.error("❌ Please provide MySQL Database Name.")
+                    elif not selected_sync_tables:
+                        st.error("❌ Please select at least one table to sync.")
+                    else:
+                        sync_status_box = st.container()
+                        with st.spinner("Running cross-database sync..."):
+                            try:
+                                mysql_cfg = {
+                                    'host': mysql_host.strip(),
+                                    'user': mysql_user.strip(),
+                                    'password': mysql_password,
+                                    'database': mysql_database.strip()
+                                }
+
+                                pg_cfg = {
+                                    'host': 'localhost',
+                                    'port': 3307,
+                                    'user': 'postgres',
+                                    'password': 'hello',
+                                    'database': 'WH'
+                                }
+
+                                sync_results = sync_mysql_tables_to_postgres(
+                                    mysql_config=mysql_cfg,
+                                    pg_config=pg_cfg,
+                                    source_tables=selected_sync_tables,
+                                    status_container=sync_status_box,
+                                    batch_size=int(sync_batch_size)
+                                )
+
+                                result_df = pd.DataFrame(sync_results)
+
+                                if result_df.empty:
+                                    st.warning("No sync results returned.")
+                                else:
+                                    success_count = int((result_df['status'] == 'success').sum())
+                                    failed_count = int((result_df['status'] == 'failed').sum())
+                                    total_fetched = int(result_df['fetched_rows'].fillna(0).sum())
+                                    total_inserted = int(result_df['inserted_rows'].fillna(0).sum())
+                                    total_duplicates = int(result_df['duplicate_rows'].fillna(0).sum())
+                                    total_deleted = int(result_df['deleted_rows'].fillna(0).sum())
+                                    total_target_rows = int(result_df['target_total_rows'].fillna(0).sum()) if 'target_total_rows' in result_df.columns else 0
+
+                                    st.markdown("#### ✅ Sync Execution Summary")
+                                    m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
+                                    m1.metric("Tables Success", success_count)
+                                    m2.metric("Tables Failed", failed_count)
+                                    m3.metric("Rows Fetched", f"{total_fetched:,}")
+                                    m4.metric("Rows Inserted", f"{total_inserted:,}")
+                                    m5.metric("Duplicates Skipped", f"{total_duplicates:,}")
+                                    m6.metric("Stale Deleted", f"{total_deleted:,}", help="Snapshot reconciliation: removed rows that no longer exist in MySQL")
+                                    m7.metric("Rows In Target", f"{total_target_rows:,}", help="Current total rows in PostgreSQL target tables after sync")
+
+                                    display_cols = [
+                                        'source_table', 'target_table', 'strategy',
+                                        'fetched_rows', 'inserted_rows', 'duplicate_rows', 'deleted_rows',
+                                        'source_total_rows', 'target_total_rows', 'sync_note',
+                                        'status', 'error', 'started_at', 'finished_at'
+                                    ]
+                                    existing_cols = [c for c in display_cols if c in result_df.columns]
+
+                                    st.markdown("#### 📋 Per-Table Detailed Result")
+                                    st.dataframe(result_df[existing_cols], use_container_width=True)
+
+                                    st.markdown("#### 🧪 Post-Sync Verification (Date + Shop Counts)")
+                                    verify_summary_df, verify_detail_df = verify_mysql_postgres_sync_by_day_shop(
+                                        mysql_config=mysql_cfg,
+                                        pg_config=pg_cfg,
+                                        source_tables=selected_sync_tables,
+                                        lookback_days=int(sync_verify_days)
+                                    )
+
+                                    if verify_summary_df.empty:
+                                        st.warning("No verification summary returned.")
+                                    else:
+                                        st.dataframe(verify_summary_df, use_container_width=True)
+
+                                    if verify_detail_df.empty:
+                                        st.success("✅ Post-sync verification passed: no date/shop count mismatches found.")
+                                    else:
+                                        st.error(f"❌ Found {len(verify_detail_df):,} date/shop mismatch groups. Review details below.")
+                                        st.dataframe(verify_detail_df, use_container_width=True)
+
+                                        st.markdown("#### 🧾 Offloading vs Loading (delta > 0) Dedup Preview")
+                                        delta_preview_df = build_offloading_positive_delta_preview(pg_cfg, verify_detail_df)
+                                        if delta_preview_df.empty:
+                                            st.info("No Offloading vs Loading rows with delta > 0 found for append.")
+                                        else:
+                                            new_count = int((delta_preview_df['dedup_status'] == 'NEW').sum())
+                                            dup_count = int((delta_preview_df['dedup_status'] == 'ALREADY_EXISTS').sum())
+                                            c1, c2, c3 = st.columns(3)
+                                            c1.metric("Rows in Preview", f"{len(delta_preview_df):,}")
+                                            c2.metric("NEW (Will Insert)", f"{new_count:,}")
+                                            c3.metric("Already Exists", f"{dup_count:,}")
+
+                                            st.dataframe(delta_preview_df, use_container_width=True)
+
+                                            if new_count > 0:
+                                                if st.button("✅ Confirm Append NEW Offloading Delta Rows", key="confirm_append_offloading_delta_rows"):
+                                                    appended_rows = append_confirmed_offloading_deltas(pg_cfg, delta_preview_df)
+                                                    if appended_rows > 0:
+                                                        st.success(f"📝 Inserted {appended_rows:,} NEW row(s) into external_sync_delta_log.")
+                                                    else:
+                                                        st.warning("No rows inserted. Please retry or check DB connection.")
+                                            else:
+                                                st.info("All preview rows already exist in PostgreSQL log. Nothing new to insert.")
+
+                                        st.markdown("#### 📥 Invoices* Positive Delta Backfill (MySQL → PostgreSQL)")
+                                        invoices_preview_df = build_invoices_positive_delta_group_preview(pg_cfg, verify_detail_df)
+                                        if invoices_preview_df.empty:
+                                            st.info("No invoices* groups with delta > 0 found for backfill.")
+                                        else:
+                                            inv_new = int((invoices_preview_df['dedup_status'] == 'NEW_GROUP').sum())
+                                            inv_old = int((invoices_preview_df['dedup_status'] == 'ALREADY_REPAIRED').sum())
+                                            i1, i2, i3 = st.columns(3)
+                                            i1.metric("Invoices Groups in Preview", f"{len(invoices_preview_df):,}")
+                                            i2.metric("NEW_GROUP (Will Backfill)", f"{inv_new:,}")
+                                            i3.metric("Already Repaired", f"{inv_old:,}")
+
+                                            st.dataframe(invoices_preview_df, use_container_width=True)
+
+                                            if inv_new > 0:
+                                                if st.button("✅ Confirm Fetch Missing Invoices Rows (delta > 0)", key="confirm_fetch_missing_invoices_delta"):
+                                                    repair_result = repair_invoices_positive_delta_groups(
+                                                        mysql_config=mysql_cfg,
+                                                        pg_config=pg_cfg,
+                                                        preview_df=invoices_preview_df,
+                                                        batch_size=int(sync_batch_size),
+                                                    )
+                                                    st.success(
+                                                        f"Invoices backfill done · groups processed: {repair_result['groups_processed']:,}/{repair_result['groups_total']:,}, "
+                                                        f"rows fetched: {repair_result['rows_fetched']:,}, rows inserted: {repair_result['rows_inserted']:,}."
+                                                    )
+                                                    if repair_result['groups_failed'] > 0:
+                                                        st.warning(f"{repair_result['groups_failed']:,} group(s) failed. Check external_sync_repair_log for details.")
+                                            else:
+                                                st.info("All invoices* positive-delta groups were already repaired earlier.")
+
+                                    with st.expander("🧠 DBA Notes / What Happened", expanded=True):
+                                        st.markdown("- Source tables were introspected from MySQL schema.")
+                                        st.markdown("- Destination tables were created automatically in PostgreSQL WH if missing.")
+                                        st.markdown("- Sync uses append-only date logic: pull only MySQL rows with date greater than PostgreSQL max date.")
+                                        st.markdown("- No stale-row deletion or source-side reconciliation is performed in this flow.")
+                                        st.markdown("- Duplicate prevention is applied via PK conflict handling and source-row hash uniqueness.")
+                                        st.markdown("- Post-sync verification compares MySQL vs PostgreSQL counts grouped by date and shop.")
+                                        st.markdown("- Sync state and execution logs were written to `external_sync_state` and `external_sync_log`.")
+
+                                    if failed_count > 0:
+                                        st.error("Some tables failed. Check the Error column in the detailed report.")
+                                    else:
+                                        st.success("🎉 All selected tables synchronized successfully.")
+
+                                    # ── Auto-refresh WH materialized views after sync ──
+                                    WH_VIEWS_TO_REFRESH = [
+                                        "mv_wh_alerts_daily",
+                                        "mv_wh_erp_cashier_sessions_daily",
+                                        "mv_wh_erp_daily",
+                                        "mv_wh_erp_test_bills_cashier_daily",
+                                        "mv_wh_invoices_agg_daily",
+                                        "mv_wh_manager_handover_daily",
+                                    ]
+                                    st.markdown("#### 🔄 Refreshing WH Materialized Views")
+                                    mv_results = []
+                                    try:
+                                        mv_conn = psycopg2.connect(
+                                            host=pg_cfg['host'], port=pg_cfg['port'],
+                                            user=pg_cfg['user'], password=pg_cfg['password'],
+                                            dbname=pg_cfg['database']
+                                        )
+                                        mv_cur = mv_conn.cursor()
+                                        for view_name in WH_VIEWS_TO_REFRESH:
+                                            try:
+                                                mv_cur.execute(f"REFRESH MATERIALIZED VIEW {view_name}")
+                                                mv_conn.commit()
+                                                mv_results.append({"view": view_name, "status": "✅ refreshed"})
+                                            except Exception as ve:
+                                                mv_conn.rollback()
+                                                mv_results.append({"view": view_name, "status": f"⚠️ {ve}"})
+                                        mv_cur.close()
+                                        mv_conn.close()
+                                    except Exception as mv_err:
+                                        st.error(f"❌ Could not connect for MV refresh: {mv_err}")
+                                        mv_results = []
+
+                                    if mv_results:
+                                        ok = sum(1 for r in mv_results if r["status"].startswith("✅"))
+                                        st.dataframe(mv_results, use_container_width=True)
+                                        if ok == len(mv_results):
+                                            st.success(f"✅ All {ok} WH materialized views refreshed.")
+                                        else:
+                                            st.warning(f"⚠️ {ok}/{len(mv_results)} views refreshed — see table above for errors.")
+
+                            except Exception as sync_error:
+                                st.error(f"❌ Sync failed: {sync_error}")
+
+            st.markdown("---")
+            st.markdown("### 🔁 Delete & Re-Fetch from Date")
+            st.caption("Permanently deletes PostgreSQL WH rows from the chosen date onwards and re-imports fresh from MySQL.")
+            with st.expander("⚙️ Configure & Run Date Reset", expanded=False):
+                st.warning("⚠️ **Destructive — irreversible.** Rows deleted from PostgreSQL cannot be recovered from this tool. Confirm MySQL source is accessible before proceeding.")
+                rf_c1, rf_c2 = st.columns(2)
+                with rf_c1:
+                    refetch_from_date = st.date_input(
+                        "Re-fetch from date (inclusive)", value=date(2026, 4, 1), key="refetch_from_date"
+                    )
+                    refetch_tables = st.multiselect(
+                        "Tables to reset",
+                        options=["ALERTS", "ERPDATA", "INVOICES", "invoices_manager"],
+                        default=["ALERTS", "ERPDATA", "INVOICES", "invoices_manager"],
+                        key="refetch_tables",
+                    )
+                with rf_c2:
+                    rf_mysql_host     = st.text_input("MySQL Host",     value="192.168.0.17",      key="rf_mysql_host")
+                    rf_mysql_user     = st.text_input("MySQL User",     value="misaccount",         key="rf_mysql_user")
+                    rf_mysql_password = st.text_input("MySQL Password", type="password",
+                                                      value="Inv@Central@2024",                     key="rf_mysql_password")
+                    rf_mysql_db       = st.text_input("MySQL Database", value="",
+                                                      placeholder="e.g. invcentral",                key="rf_mysql_db")
+
+                pg_cfg_rf = {'host': 'localhost', 'port': 3307, 'user': 'postgres',
+                             'password': 'hello', 'database': 'WH'}
+                RF_PG_DATE_COLS = {
+                    'alerts': 'a_entrytime', 'erpdata': 'invdate',
+                    'invoices': 'invdate',   'invoices_manager': 'invdate',
+                }
+
+                if st.button("🔍 Preview Rows to Delete", key="btn_preview_delete"):
+                    preview_rows = []
+                    try:
+                        with psycopg2.connect(**pg_cfg_rf) as _pconn:
+                            with _pconn.cursor() as _pcur:
+                                for _tbl in (refetch_tables or []):
+                                    _col = RF_PG_DATE_COLS.get(_tbl.lower(), 'invdate')
+                                    try:
+                                        _pcur.execute(
+                                            f"SELECT COUNT(*) FROM {_quote_ident(_tbl.lower())} "
+                                            f"WHERE {_quote_ident(_col)}::date >= %s",
+                                            (str(refetch_from_date),)
+                                        )
+                                        _cnt = _pcur.fetchone()[0]
+                                    except Exception as _te:
+                                        _cnt = f"Error: {_te}"
+                                    preview_rows.append({
+                                        'table': _tbl.lower(), 'date_col': _col,
+                                        'rows_that_will_be_deleted': _cnt,
+                                    })
+                        st.dataframe(preview_rows, use_container_width=True)
+                    except Exception as _e:
+                        st.error(f"Preview failed: {_e}")
+
+                if st.button("✅ CONFIRM: Delete & Re-Fetch", type="primary", key="btn_confirm_delete_refetch"):
+                    if not rf_mysql_db.strip():
+                        st.error("❌ MySQL Database Name required.")
+                    elif not refetch_tables:
+                        st.error("❌ Select at least one table.")
+                    else:
+                        mysql_cfg_rf = {
+                            'host': rf_mysql_host.strip(), 'user': rf_mysql_user.strip(),
+                            'password': rf_mysql_password, 'database': rf_mysql_db.strip(),
+                        }
+                        rf_status_box = st.container()
+                        with st.spinner("Deleting and re-fetching data from MySQL..."):
+                            try:
+                                rf_results = delete_and_refetch_tables_from_date(
+                                    mysql_config=mysql_cfg_rf,
+                                    pg_config=pg_cfg_rf,
+                                    from_date_str=str(refetch_from_date),
+                                    tables=refetch_tables,
+                                    batch_size=20000,
+                                    status_container=rf_status_box,
+                                )
+                                st.success("✅ Delete & Re-Fetch complete.")
+
+                                # Post step requested by user: normalize invoices duplicate flags.
+                                selected_refetch_tables = {str(t).strip().lower() for t in refetch_tables}
+                                if 'invoices' in selected_refetch_tables:
+                                    try:
+                                        updated_dup_rows = normalize_invoices_duplicate_flags(
+                                            pg_config=pg_cfg_rf,
+                                            status_container=rf_status_box,
+                                        )
+                                        st.success(
+                                            f"✅ Invoices duplicate flags refreshed successfully ({updated_dup_rows:,} rows updated)."
+                                        )
+                                    except Exception as dup_err:
+                                        st.error(f"❌ Duplicate flag refresh failed: {dup_err}")
+
+                                st.dataframe(pd.DataFrame(rf_results), use_container_width=True)
+                            except Exception as rf_err:
+                                st.error(f"❌ Failed: {rf_err}")
+
+            st.markdown("---")
+            st.markdown("### 🎯 Century Stockout Daily UPSERT")
+            st.info("Automatically run daily stockout tracking UPSERT for Century Penetration dashboard")
+
+            col1, col2 = st.columns([2, 1])
+
+            with col1:
+                st.markdown("""
+                **What this does:**
+                - Updates `mv_century_penetration_test` with current stock status
+                - Records stockout dates and calculates days out of stock
+                - Appends daily snapshot to `century_stockout_daily_snapshot`
+                - Refreshes `mv_stockout_analysis` materialized view
+                - Enables 7-day trend chart in Century dashboard
+                """)
+
+            with col2:
+                # Check if tables exist
+                try:
+                    conn = psycopg2.connect(**DB_CONFIG, database='century_penetration')
+                    cur = conn.cursor()
+                    cur.execute("""
+                        SELECT COUNT(*) FROM information_schema.tables 
+                        WHERE table_name = 'mv_century_penetration_test'
+                    """)
+                    table_exists = cur.fetchone()[0] > 0
+
+                    if table_exists:
+                        cur.execute("SELECT COUNT(*) FROM century_stockout_daily_snapshot")
+                        snapshot_count = cur.fetchone()[0]
+                        cur.execute("SELECT COUNT(DISTINCT snapshot_date) FROM century_stockout_daily_snapshot")
+                        days_tracked = cur.fetchone()[0]
+                        st.metric("Snapshots", f"{snapshot_count:,}")
+                        st.metric("Days Tracked", days_tracked)
+
+                    cur.close()
+                    conn.close()
+                except Exception as e:
+                    st.warning(f"⚠️ Century tables not found: {str(e)[:100]}")
+
+            # UPSERT button
+            col1, col2, col3 = st.columns([1, 1, 1])
+            with col2:
+                if st.button("🚀 Run Daily UPSERT", use_container_width=True, type="primary"):
+                    with st.spinner("Running Century Stockout UPSERT..."):
                         try:
-                            conn.close()
-                        except:
-                            pass
+                            import subprocess
+                            import os
+
+                            # Path to the UPSERT script
+                            script_path = os.path.join("centurypenetration", "daily_stockout_upsert.py")
+
+                            if os.path.exists(script_path):
+                                # Run the script
+                                result = subprocess.run(
+                                    ["python", script_path],
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=300  # 5 minutes timeout
+                                )
+
+                                if result.returncode == 0:
+                                    st.success("✅ UPSERT completed successfully!")
+
+                                    # Parse output for statistics
+                                    output_lines = result.stdout.split('\\n')
+                                    for line in output_lines:
+                                        if "Total Items:" in line or "Current Stockouts:" in line or \
+                                           "UPSERT completed:" in line or "Daily snapshot appended:" in line:
+                                            st.code(line)
+
+                                    # Show full output in expander
+                                    with st.expander("📄 Full Output"):
+                                        st.code(result.stdout)
+                                else:
+                                    st.error(f"❌ UPSERT failed with return code {result.returncode}")
+                                    st.code(result.stderr)
+                            else:
+                                st.error(f"❌ Script not found: {script_path}")
+                                st.info("💡 Make sure `centurypenetration/daily_stockout_upsert.py` exists")
+
+                        except subprocess.TimeoutExpired:
+                            st.error("❌ UPSERT timed out after 5 minutes")
+                        except Exception as e:
+                            st.error(f"❌ Error running UPSERT: {e}")
+
+            # Schedule automation tip
+            with st.expander("⏰ Schedule Daily Automation"):
+                st.markdown("""
+                **Option 1: Windows Task Scheduler**
+                ```powershell
+                # Run batch file: centurypenetration/run_daily_stockout_update.bat
+                # Schedule: Daily at 1:00 AM
+                ```
+
+                **Option 2: Python Script**
+                ```python
+                import schedule
+                import time
+                import subprocess
+
+                def run_upsert():
+                    subprocess.run(["python", "centurypenetration/daily_stockout_upsert.py"])
+
+                schedule.every().day.at("01:00").do(run_upsert)
+
+                while True:
+                    schedule.run_pending()
+                    time.sleep(60)
+                ```
+
+                **Option 3: Manual**
+                - Click "🚀 Run Daily UPSERT" button above once per day
+                - Best time: Morning (8 AM) or after midnight (1 AM)
+                """)
+
+        # ===========================
+        # TAB 3: INDEX MANAGER
+        # ===========================
+
+    elif view == "indexmgr":
+        if not st.session_state.is_admin:
+            st.warning("🔒 Index management is restricted to administrators.")
+        else:
+            st.markdown('<h2 style="color:#e6edf3;font-weight:800;margin-bottom:4px;">Index Manager</h2>', unsafe_allow_html=True)
+            st.markdown('<p style="color:#8b949e;font-size:14px;margin-bottom:24px;">Create and manage database indexes</p>', unsafe_allow_html=True)
+            st.markdown("### 🔧 Index Manager")
+            st.info("Create database indexes by pasting SQL queries")
+
+            # Table selection
+            selected_table_idx = st.selectbox(
+                "Select Table",
+                options=list(TABLE_CONFIGS.keys()),
+                key="idx_table_select",
+                help="Choose the table for index operations"
+            )
+
+            if selected_table_idx:
+                config = TABLE_CONFIGS[selected_table_idx]
+                target_table = config.get('target_table', selected_table_idx)
+                target_database = config.get('database', 'salesdata')
+
+                # Show current row count and latest date
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    current_count = get_table_count(target_table, target_database)
+                    if current_count is not None:
+                        st.metric("Current Row Count", f"{current_count:,}")
+
+                with col2:
+                    if 'date_column' in config:
+                        latest_date = get_latest_date(target_table, config['date_column'], target_database)
+                        if latest_date:
+                            st.metric("Latest Date", latest_date.strftime('%Y-%m-%d') if hasattr(latest_date, 'strftime') else str(latest_date))
+
+                st.markdown("---")
+
+                # Query input
+                st.markdown("**Paste Index Creation Queries:**")
+                st.caption("You can paste multiple CREATE INDEX statements separated by semicolons")
+
+                index_queries = st.text_area(
+                    "SQL Queries",
+                    height=200,
+                    placeholder="CREATE INDEX idx_name ON table_name (column_name);\nCREATE INDEX idx_name2 ON table_name (column1, column2);",
+                    help="Paste one or more CREATE INDEX statements"
+                )
+
+                if index_queries.strip():
+                    # Split by semicolon
+                    queries = [q.strip() for q in index_queries.split(';') if q.strip()]
+                    st.info(f"📝 Found {len(queries)} query(ies)")
+
+                    # Show preview
+                    with st.expander("👁️ Preview Queries", expanded=False):
+                        for i, q in enumerate(queries, 1):
+                            st.code(q, language='sql')
+
+                    # Execute button
+                    col1, col2, col3 = st.columns([1, 2, 1])
+
+                    with col2:
+                        if st.button("🚀 Execute Queries", type="primary", use_container_width=True):
+                            progress_bar = st.progress(0)
+                            status_text = st.empty()
+
+                            try:
+                                status_text.text("🔗 Connecting to database...")
+                                conn = psycopg2.connect(**DB_CONFIG)
+
+                                success_count = 0
+                                fail_count = 0
+
+                                for i, query in enumerate(queries, 1):
+                                    if st.session_state.upload_cancelled:
+                                        break
+
+                                    progress = int((i / len(queries)) * 100)
+                                    progress_bar.progress(progress)
+                                    status_text.text(f"⚙️ Executing query {i}/{len(queries)}...")
+
+                                    result_container = st.empty()
+                                    if execute_index_query(conn, query, result_container):
+                                        result_container.success(f"✅ Query {i} executed successfully")
+                                        success_count += 1
+                                    else:
+                                        result_container.error(f"❌ Query {i} failed")
+                                        fail_count += 1
+
+                                conn.close()
+                                progress_bar.progress(100)
+                                status_text.text("✅ All queries processed!")
+
+                                # Summary
+                                st.markdown("---")
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    st.metric("Total Queries", len(queries))
+                                with col2:
+                                    st.metric("✅ Successful", success_count)
+                                with col3:
+                                    st.metric("❌ Failed", fail_count)
+
+                                if success_count == len(queries):
+                                    st.balloons()
+                                    st.success("🎉 All indexes created successfully!")
+
+                            except Exception as e:
+                                st.error(f"❌ Error: {e}")
+                                try:
+                                    conn.close()
+                                except:
+                                    pass
+
+
+    else:
+        st.session_state.portal_view = "home"
+        st.rerun()
 
 # Footer
-st.markdown("---")
-st.markdown("""
-<div style="text-align: center; padding: 20px; opacity: 0.7;">
-    <p style="color: white;">© 2025 Melcom Group Limited | Analytics Hub v2.0</p>
-    <p style="font-size: 12px; color: white;">🔒 All operations connect to PostgreSQL on port 3307</p>
-</div>
-""", unsafe_allow_html=True)
+st.markdown(
+    '<div style="text-align:center;padding:32px 0 16px 0;">'
+    '<p style="color:#484f58;font-size:12px;">© 2025 Melcom Group Limited · Analytics Hub · v3.0</p>'
+    '</div>',
+    unsafe_allow_html=True
+)

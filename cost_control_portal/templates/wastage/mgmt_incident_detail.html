@@ -1,0 +1,218 @@
+{% extends "wastage/base.html" %}
+{% block title %}Incident {{ incident.incident_no }} — MGMT View{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 py-4" style="max-width:900px;">
+
+  <!-- Back + Title -->
+  <div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+    <a href="{% url 'mgmt_dashboard' %}" class="btn btn-sm"
+       style="background:#21262d;color:#c9d1d9;border:1px solid #30363d;">
+      <i class="bi bi-arrow-left me-1"></i> Back
+    </a>
+    <div>
+      <h5 class="fw-800 mb-0" style="color:#e6edf3;">
+        Incident <span style="color:#58a6ff;font-family:monospace;">{{ incident.incident_no }}</span>
+      </h5>
+      <small style="color:#8b949e;">Read-only view</small>
+    </div>
+    <span class="ms-auto badge px-3 py-2" style="
+      {% if incident.status == 'Approved' %}background:rgba(63,185,80,.15);color:#3fb950;border:1px solid rgba(63,185,80,.3);
+      {% elif incident.status == 'Rejected' %}background:rgba(248,81,73,.15);color:#f85149;border:1px solid rgba(248,81,73,.3);
+      {% else %}background:rgba(255,193,7,.15);color:#ffc107;border:1px solid rgba(255,193,7,.3);{% endif %}
+      font-size:13px;">
+      {{ incident.status }}
+    </span>
+  </div>
+
+  <div class="row g-3">
+
+    <!-- Left: Incident Info -->
+    <div class="col-md-7">
+      <div class="card border-0 shadow-sm mb-3"
+           style="background:#161b22;border-radius:14px;border:1px solid #30363d;position:relative;overflow:hidden;">
+        <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#e31837,#764ba2);"></div>
+        <div class="card-body px-4 py-3">
+          <p style="color:#8b949e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px;">
+            Incident Details
+          </p>
+
+          <div class="row g-2 mb-2">
+            <div class="col-5" style="color:#8b949e;font-size:13px;">Shop</div>
+            <div class="col-7 fw-600" style="color:#e6edf3;font-size:13px;">{{ incident.shop_code }} — {{ incident.shop_name }}</div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-5" style="color:#8b949e;font-size:13px;">Department</div>
+            <div class="col-7" style="font-size:13px;">
+              <span style="background:rgba(139,148,158,.2);color:#c9d1d9;padding:2px 8px;border-radius:4px;font-size:12px;">
+                {{ incident.department }}
+              </span>
+            </div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-5" style="color:#8b949e;font-size:13px;">Submitted By</div>
+            <div class="col-7" style="color:#e6edf3;font-size:13px;">
+              {{ incident.submitted_name|default:incident.submitted_by }} ({{ incident.submitted_by }})
+            </div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-5" style="color:#8b949e;font-size:13px;">Submit Date</div>
+            <div class="col-7" style="color:#e6edf3;font-size:13px;">{{ incident.submit_date|date:"d M Y, H:i" }}</div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-5" style="color:#8b949e;font-size:13px;">Reason</div>
+            <div class="col-7" style="font-size:13px;">
+              <span style="background:rgba(255,193,7,.15);color:#ffc107;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600;">
+                {{ incident.reason }}
+              </span>
+            </div>
+          </div>
+          {% if incident.remarks %}
+          <div class="row g-2 mb-2">
+            <div class="col-5" style="color:#8b949e;font-size:13px;">Remarks</div>
+            <div class="col-7" style="color:#c9d1d9;font-size:13px;">{{ incident.remarks }}</div>
+          </div>
+          {% endif %}
+          {% if incident.approved_by %}
+          <hr style="border-color:#30363d;margin:10px 0;">
+          <div class="row g-2 mb-2">
+            <div class="col-5" style="color:#8b949e;font-size:13px;">Reviewed By</div>
+            <div class="col-7" style="color:#e6edf3;font-size:13px;">{{ incident.approved_name|default:incident.approved_by }}</div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-5" style="color:#8b949e;font-size:13px;">Review Date</div>
+            <div class="col-7" style="color:#e6edf3;font-size:13px;">{{ incident.approved_date|date:"d M Y, H:i"|default:"—" }}</div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Items Table -->
+      <div class="card border-0 shadow-sm"
+           style="background:#161b22;border-radius:14px;border:1px solid #30363d;overflow:hidden;">
+        <div class="card-body p-0">
+          <div class="px-4 pt-3 pb-2">
+            <p style="color:#8b949e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin:0;">Items</p>
+          </div>
+          <div class="table-responsive">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+              <thead>
+                <tr style="background:#21262d;">
+                  <th style="padding:10px 16px;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;border-bottom:1px solid #30363d;">#</th>
+                  <th style="padding:10px 16px;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;border-bottom:1px solid #30363d;">Item</th>
+                  <th style="padding:10px 16px;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;border-bottom:1px solid #30363d;">Qty</th>
+                  <th style="padding:10px 16px;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;border-bottom:1px solid #30363d;">Unit Price</th>
+                  <th style="padding:10px 16px;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;border-bottom:1px solid #30363d;">Total</th>
+                  {% if incident.status == 'Approved' %}
+                  <th style="padding:10px 16px;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;border-bottom:1px solid #30363d;">Approved Qty</th>
+                  {% endif %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for item in items %}
+                <tr style="border-bottom:1px solid #21262d;">
+                  <td style="padding:10px 16px;color:#8b949e;">{{ forloop.counter }}</td>
+                  <td style="padding:10px 16px;">
+                    <div style="color:#e6edf3;font-weight:600;">{{ item.item_name }}</div>
+                    <div style="color:#8b949e;font-size:11px;margin-top:2px;">{{ item.item_code }}</div>
+                  </td>
+                  <td style="padding:10px 16px;color:#c9d1d9;">{{ item.quantity }} {{ item.uom }}</td>
+                  <td style="padding:10px 16px;color:#c9d1d9;">GH₵ {{ item.selling_price|floatformat:2 }}</td>
+                  <td style="padding:10px 16px;color:#e6edf3;font-weight:700;">GH₵ {{ item.total_value|floatformat:2 }}</td>
+                  {% if incident.status == 'Approved' %}
+                  <td style="padding:10px 16px;color:#3fb950;font-weight:600;">
+                    {{ item.approved_quantity|default:"—" }} {{ item.uom }}
+                  </td>
+                  {% endif %}
+                </tr>
+                {% endfor %}
+              </tbody>
+              <tfoot>
+                <tr style="background:#21262d;">
+                  <td colspan="{% if incident.status == 'Approved' %}5{% else %}4{% endif %}"
+                      style="padding:10px 16px;text-align:right;color:#8b949e;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">
+                    TOTAL VALUE
+                  </td>
+                  <td style="padding:10px 16px;color:#e6edf3;font-weight:800;font-size:14px;">GH₵ {{ total|floatformat:2 }}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Photo -->
+    <div class="col-md-5">
+      <div class="card border-0 shadow-sm"
+           style="background:#161b22;border-radius:14px;border:1px solid #30363d;overflow:hidden;">
+        <div class="card-body px-4 py-3">
+          <p style="color:#8b949e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px;">
+            Evidence Photo
+          </p>
+          {% if photo_url %}
+            <img src="{{ photo_url }}" alt="Incident photo"
+                 class="img-fluid rounded"
+                 style="border-radius:10px;border:1px solid #30363d;cursor:zoom-in;width:100%;"
+                 onclick="openLightbox(this.src)" />
+            <p style="color:#8b949e;font-size:12px;margin-top:8px;text-align:center;">
+              <i class="bi bi-zoom-in me-1"></i>Click to enlarge
+            </p>
+          {% else %}
+            <div style="text-align:center;padding:40px 0;">
+              <div style="font-size:48px;opacity:.3;">📷</div>
+              <p style="color:#8b949e;font-size:13px;margin-top:8px;">No photo attached</p>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if incident.expiry_date %}
+      <div class="card border-0 shadow-sm mt-3"
+           style="background:#161b22;border-radius:14px;border:1px solid #30363d;">
+        <div class="card-body px-4 py-3">
+          <p style="color:#8b949e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">Expiry Info</p>
+          <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-calendar-x" style="color:#f85149;"></i>
+            <span style="color:#e6edf3;">Expiry: {{ incident.expiry_date|date:"d M Y" }}</span>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if incident.supervisor_remark %}
+      <div class="card border-0 shadow-sm mt-3"
+           style="background:#161b22;border-radius:14px;border:1px solid #30363d;">
+        <div class="card-body px-4 py-3">
+          <p style="color:#8b949e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">Supervisor Remark</p>
+          <p style="color:#c9d1d9;font-size:14px;margin:0;">{{ incident.supervisor_remark }}</p>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div id="lightbox" onclick="this.style.display='none'"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;
+            cursor:zoom-out;">
+  <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
+    <img id="lightboxImg" style="max-width:95vw;max-height:95vh;border-radius:10px;" />
+  </div>
+</div>
+
+<style>
+  body { background:#0d1117!important; }
+  .card-body { background:#161b22 !important; }
+</style>
+
+<script>
+function openLightbox(src) {
+  const lb = document.getElementById('lightbox');
+  document.getElementById('lightboxImg').src = src;
+  lb.style.display = 'block';
+}
+</script>
+{% endblock %}

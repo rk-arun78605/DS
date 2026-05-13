@@ -1,0 +1,196 @@
+{% extends "wastage/base.html" %}
+{% block title %}MGMT Dashboard — Cost Control Portal{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 py-4">
+
+  <!-- Header -->
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+    <div>
+      <h4 class="fw-800 mb-0" style="color:#e6edf3;">
+        <i class="bi bi-shield-check text-danger me-2"></i>
+        {% if is_mgmt_view %}Management Overview{% else %}Supervisor / Manager Overview{% endif %}
+      </h4>
+      <small class="text-muted">Read-only master view — all shops, all incidents</small>
+    </div>
+    <span class="badge bg-danger px-3 py-2" style="font-size:13px;">
+      <i class="bi bi-eye me-1"></i> View Only
+    </span>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card border-0 shadow-sm h-100" style="background:#161b22;border-radius:14px;">
+        <div class="card-body text-center py-3">
+          <div style="font-size:28px;font-weight:800;color:#e6edf3;">{{ total_all }}</div>
+          <div class="small text-uppercase fw-600" style="letter-spacing:.6px;color:#e6edf3;">Total Incidents</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card border-0 shadow-sm h-100" style="background:#161b22;border-radius:14px;">
+        <div class="card-body text-center py-3">
+          <div style="font-size:28px;font-weight:800;color:#ffc107;">{{ pending_count }}</div>
+          <div class="small text-uppercase fw-600" style="letter-spacing:.6px;color:#ffc107;">Pending</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card border-0 shadow-sm h-100" style="background:#161b22;border-radius:14px;">
+        <div class="card-body text-center py-3">
+          <div style="font-size:28px;font-weight:800;color:#3fb950;">{{ approved_count }}</div>
+          <div class="small text-uppercase fw-600" style="letter-spacing:.6px;color:#3fb950;">Approved</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card border-0 shadow-sm h-100" style="background:#161b22;border-radius:14px;">
+        <div class="card-body text-center py-3">
+          <div style="font-size:28px;font-weight:800;color:#f85149;">{{ rejected_count }}</div>
+          <div class="small text-uppercase fw-600" style="letter-spacing:.6px;color:#f85149;">Rejected</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <ul class="nav nav-tabs mb-3" id="mgmtTabs" role="tablist" style="border-bottom:1px solid #30363d;">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active fw-600" id="staff-tab" data-bs-toggle="tab"
+              data-bs-target="#staffPanel" type="button" style="color:#8b949e;">
+        <i class="bi bi-people me-1"></i> Staff Incidents
+        <span class="badge bg-secondary ms-1">{{ total_staff }}</span>
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link fw-600" id="sup-tab" data-bs-toggle="tab"
+              data-bs-target="#supPanel" type="button" style="color:#8b949e;">
+        <i class="bi bi-clipboard-check me-1"></i> {{ sup_tab_label }}
+        <span class="badge bg-danger ms-1">{{ total_all }}</span>
+      </button>
+    </li>
+  </ul>
+
+  <div class="tab-content">
+
+    <!-- ── TAB 1: Staff Incidents ─────────────────────────────── -->
+    <div class="tab-pane fade show active" id="staffPanel" role="tabpanel">
+      <div class="card border-0 shadow-sm" style="background:#161b22;border-radius:14px;border:1px solid #30363d;">
+        <div class="card-body p-0">
+          <!-- Search -->
+          <div class="p-3 border-bottom" style="border-color:#30363d!important;">
+            <input type="text" id="staffSearch" class="form-control form-control-sm"
+                   placeholder="🔍  Search by shop, staff name, incident no, item…"
+                   style="background:#21262d;border-color:#30363d;color:#e6edf3;max-width:400px;">
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover mb-0" id="staffTable"
+                   style="color:#c9d1d9;font-size:13px;">
+              <thead style="background:#21262d;">
+                <tr>
+                  <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Incident No</th>
+                  <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Shop</th>
+                  <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Staff</th>
+                  <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Dept</th>
+                  <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Date</th>
+                  <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Item</th>
+                  <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Qty</th>
+                  <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Value</th>
+                  <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Status</th>
+                  <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for inc in staff_incidents %}
+                <tr style="border-color:#21262d;">
+                  <td class="px-3 py-2" style="font-family:monospace;font-size:12px;color:#58a6ff;">{{ inc.incident_no }}</td>
+                  <td class="px-3 py-2">{{ inc.shop_code }}<br><small class="text-muted">{{ inc.shop_name }}</small></td>
+                  <td class="px-3 py-2">{{ inc.submitted_name|default:inc.submitted_by }}</td>
+                  <td class="px-3 py-2"><span class="badge bg-secondary">{{ inc.department }}</span></td>
+                  <td class="px-3 py-2 text-nowrap">{{ inc.submit_date|date:"d M Y" }}<br><small class="text-muted">{{ inc.submit_date|date:"H:i" }}</small></td>
+                  <td class="px-3 py-2">{{ inc.item_name|truncatechars:30 }}</td>
+                  <td class="px-3 py-2">{{ inc.quantity }} {{ inc.uom }}</td>
+                  <td class="px-3 py-2 text-nowrap">GH₵ {{ inc.total_value|floatformat:2 }}</td>
+                  <td class="px-3 py-2">
+                    {% if inc.status == 'Approved' %}
+                      <span class="badge" style="background:rgba(63,185,80,.15);color:#3fb950;border:1px solid rgba(63,185,80,.3);">Approved</span>
+                    {% elif inc.status == 'Rejected' %}
+                      <span class="badge" style="background:rgba(248,81,73,.15);color:#f85149;border:1px solid rgba(248,81,73,.3);">Rejected</span>
+                    {% elif inc.status == 'Pending' %}
+                      <span class="badge" style="background:rgba(255,193,7,.15);color:#ffc107;border:1px solid rgba(255,193,7,.3);">Pending</span>
+                    {% else %}
+                      <span class="badge bg-secondary">{{ inc.status }}</span>
+                    {% endif %}
+                  </td>
+                  <td class="px-3 py-2">
+                    <a href="{% url 'mgmt_incident_detail' inc.pk %}" class="btn btn-sm"
+                       style="background:#21262d;color:#58a6ff;border:1px solid #30363d;"
+                       title="View detail">
+                      👁
+                    </a>
+                  </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="10" class="text-center py-5 text-muted">No staff incidents found.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TAB 2: Supervisor / Manager View ───────────────────── -->
+    <div class="tab-pane fade" id="supPanel" role="tabpanel">
+
+      <!-- Sub-tabs: Pending / Approved / Rejected -->
+      <ul class="nav nav-pills mb-3 gap-2" id="statusTabs" role="tablist">
+        <li class="nav-item"><button class="nav-link active px-3" data-bs-toggle="pill" data-bs-target="#pendingPanel" type="button">
+          <i class="bi bi-hourglass-split me-1"></i>Pending <span class="badge bg-warning text-dark ms-1">{{ pending_count }}</span>
+        </button></li>
+        <li class="nav-item"><button class="nav-link px-3" data-bs-toggle="pill" data-bs-target="#approvedPanel" type="button">
+          <i class="bi bi-check-circle me-1"></i>Approved <span class="badge bg-success ms-1">{{ approved_count }}</span>
+        </button></li>
+        <li class="nav-item"><button class="nav-link px-3" data-bs-toggle="pill" data-bs-target="#rejectedPanel" type="button">
+          <i class="bi bi-x-circle me-1"></i>Rejected <span class="badge bg-danger ms-1">{{ rejected_count }}</span>
+        </button></li>
+      </ul>
+
+      <div class="tab-content">
+        {% for qs_name, incidents, label, badge_class in sup_tabs %}
+        {% endfor %}
+
+        <!-- Pending -->
+        {% include "wastage/mgmt_inc_table.html" with incidents=pending_qs panel_id="pendingPanel" show=True %}
+        <!-- Approved -->
+        {% include "wastage/mgmt_inc_table.html" with incidents=approved_qs panel_id="approvedPanel" show=False %}
+        <!-- Rejected -->
+        {% include "wastage/mgmt_inc_table.html" with incidents=rejected_qs panel_id="rejectedPanel" show=False %}
+      </div>
+    </div>
+
+  </div><!-- /tab-content -->
+</div>
+
+<style>
+  body { background:#0d1117 !important; }
+  .nav-tabs .nav-link { border:none; border-bottom:2px solid transparent; color:#8b949e!important; border-radius:0; padding:10px 18px; font-weight:600; }
+  .nav-tabs .nav-link.active { color:#e31837!important; border-bottom-color:#e31837!important; background:transparent!important; }
+  .nav-pills .nav-link { background:#21262d; color:#c9d1d9; border:1px solid #30363d; font-size:13px; font-weight:600; }
+  .nav-pills .nav-link.active { background:#e31837; border-color:#e31837; color:#fff; }
+  .table-hover tbody tr:hover td { background:#1c2128!important; }
+  .fw-800 { font-weight:800; }
+  .fw-600 { font-weight:600; }
+</style>
+
+<script>
+  // Live search on Staff tab
+  document.getElementById('staffSearch').addEventListener('input', function() {
+    const q = this.value.toLowerCase();
+    document.querySelectorAll('#staffTable tbody tr').forEach(tr => {
+      tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+</script>
+{% endblock %}

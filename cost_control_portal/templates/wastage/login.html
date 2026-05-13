@@ -1,0 +1,232 @@
+{% extends 'wastage/base.html' %}
+{% block title %}Login — Melcom Cost Control Portal{% endblock %}
+
+{% block content %}
+<div class="login-page">
+  <div class="login-card animate-fade-up">
+
+    <div class="login-header">
+      <img src="/static/img/melcom-logo.png" alt="Melcom" class="login-logo"
+           onerror="this.outerHTML='<div style=\'font-size:2rem;font-weight:900;color:#fff;margin-bottom:.5rem;\'>MELCOM</div>'" />
+      <p class="login-title">Cost Control Portal</p>
+    </div>
+
+    <div class="login-body">
+      <h5 class="fw-700 mb-1" style="color:var(--melcom-dark)">Welcome Back</h5>
+      <p class="text-muted mb-4" style="font-size:13px">Select your role, then sign in with your Employee ID</p>
+
+      {% if messages %}
+        {% for m in messages %}
+        <div class="alert alert-{% if 'success' in m.tags %}success{% else %}danger{% endif %} d-flex align-items-center gap-2 py-2 mb-3" style="font-size:13px">
+          <i class="bi bi-{% if 'success' in m.tags %}check-circle-fill text-success{% else %}exclamation-circle-fill text-danger{% endif %}"></i>
+          {{ m }}
+        </div>
+        {% endfor %}
+      {% endif %}
+
+      {% if error %}
+      <div class="alert alert-danger d-flex align-items-center gap-2 py-2 mb-3" style="font-size:13px">
+        <i class="bi bi-exclamation-circle-fill text-danger"></i>
+        {{ error }}
+      </div>
+      {% endif %}
+
+      <form method="POST" action="/login/" autocomplete="off">
+        {% csrf_token %}
+
+        <!-- Role Dropdown -->
+        <div class="mb-3">
+          <label class="form-label fw-600" for="roleSelect">
+            <i class="bi bi-person-gear me-1"></i>Role
+          </label>
+          <select name="selected_role" id="roleSelect" class="form-select" required>
+            <option value="staff"      {% if request.POST.selected_role == 'staff'      or not request.POST.selected_role %}selected{% endif %}>
+              👤  Staff
+            </option>
+            <option value="supervisor" {% if request.POST.selected_role == 'supervisor' %}selected{% endif %}>
+              🏅  Supervisor / Manager
+            </option>
+            <option value="management" {% if request.POST.selected_role == 'management' %}selected{% endif %}>
+              💼  Management
+            </option>
+          </select>
+        </div>
+
+        <!-- Employee ID -->
+        <div class="mb-3">
+          <label class="form-label" for="empId">
+            <i class="bi bi-person-badge me-1"></i>Employee ID
+          </label>
+          <input type="text" id="empId" name="emp_id" class="form-control"
+                 placeholder="Enter your Employee ID" autofocus required
+                 value="{{ request.POST.emp_id|default:'' }}" />
+        </div>
+
+        <!-- Password -->
+        <div class="mb-1">
+          <label class="form-label" for="password">
+            <i class="bi bi-lock me-1"></i>Password
+          </label>
+          <div class="position-relative">
+            <input type="password" id="password" name="password" class="form-control"
+                   placeholder="Enter your password" required />
+            <button type="button"
+                    class="btn btn-sm position-absolute end-0 top-50 translate-middle-y me-2 bg-transparent border-0 text-muted"
+                    onclick="togglePwd('password','eyeIcon')" title="Show/Hide">
+              <i class="bi bi-eye" id="eyeIcon"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Reset password link -->
+        <div class="text-end mb-3">
+          <button type="button" class="btn btn-link p-0 text-muted"
+                  style="font-size:12px;text-decoration:none;"
+                  data-bs-toggle="modal" data-bs-target="#resetModal">
+            <i class="bi bi-key me-1"></i>Reset Password
+          </button>
+        </div>
+
+        <button type="submit" class="btn btn-melcom w-100 py-2">
+          <i class="bi bi-box-arrow-in-right me-2"></i>Sign In
+        </button>
+      </form>
+
+      <!-- User Management link -->
+      <div class="text-center mt-4 pt-3" style="border-top:1px solid #f0f0f0;">
+        <a href="/user-management/" class="text-muted" style="font-size:12px;text-decoration:none;">
+          <i class="bi bi-people-fill me-1"></i>User Management
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Reset Password Modal ──────────────────────────────────────────────── -->
+<div class="modal fade" id="resetModal" tabindex="-1" aria-labelledby="resetModalLabel">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:400px;">
+    <div class="modal-content shadow-lg" style="border-radius:16px;overflow:hidden;">
+
+      <div class="modal-header" style="background:linear-gradient(135deg,#e31837,#b01028);border:none;">
+        <h5 class="modal-title fw-700 text-white" id="resetModalLabel">
+          <i class="bi bi-key-fill me-2"></i>Reset Password
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+
+      <form method="POST" action="/reset-password/" id="resetForm" autocomplete="off">
+        {% csrf_token %}
+        <div class="modal-body p-4">
+          <p class="text-muted mb-3" style="font-size:13px;">
+            Enter your Employee ID and current password to set a new one.
+          </p>
+
+          {% if reset_error %}
+          <div class="alert alert-danger py-2 mb-3" style="font-size:13px;">
+            <i class="bi bi-exclamation-circle me-1"></i>{{ reset_error }}
+          </div>
+          {% endif %}
+
+          <div class="mb-3">
+            <label class="form-label fw-600" style="font-size:12px;color:#6c757d;text-transform:uppercase;letter-spacing:.5px;">
+              Employee ID
+            </label>
+            <input type="text" name="emp_id" class="form-control" placeholder="Your Employee ID"
+                   required value="{{ request.POST.emp_id|default:'' }}" />
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-600" style="font-size:12px;color:#6c757d;text-transform:uppercase;letter-spacing:.5px;">
+              Current Password
+            </label>
+            <div class="position-relative">
+              <input type="password" name="old_password" id="rOldPwd" class="form-control"
+                     placeholder="Your current password" required />
+              <button type="button"
+                      class="btn btn-sm position-absolute end-0 top-50 translate-middle-y me-2 bg-transparent border-0 text-muted"
+                      onclick="togglePwd('rOldPwd','rOldEye')">
+                <i class="bi bi-eye" id="rOldEye"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-600" style="font-size:12px;color:#6c757d;text-transform:uppercase;letter-spacing:.5px;">
+              New Password
+            </label>
+            <div class="position-relative">
+              <input type="password" name="new_password" id="rNewPwd" class="form-control"
+                     placeholder="Min 6 characters" required minlength="6"
+                     oninput="checkMatch()" />
+              <button type="button"
+                      class="btn btn-sm position-absolute end-0 top-50 translate-middle-y me-2 bg-transparent border-0 text-muted"
+                      onclick="togglePwd('rNewPwd','rNewEye')">
+                <i class="bi bi-eye" id="rNewEye"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="mb-1">
+            <label class="form-label fw-600" style="font-size:12px;color:#6c757d;text-transform:uppercase;letter-spacing:.5px;">
+              Confirm New Password
+            </label>
+            <div class="position-relative">
+              <input type="password" name="confirm_password" id="rConfPwd" class="form-control"
+                     placeholder="Repeat new password" required minlength="6"
+                     oninput="checkMatch()" />
+              <button type="button"
+                      class="btn btn-sm position-absolute end-0 top-50 translate-middle-y me-2 bg-transparent border-0 text-muted"
+                      onclick="togglePwd('rConfPwd','rConfEye')">
+                <i class="bi bi-eye" id="rConfEye"></i>
+              </button>
+            </div>
+            <div id="matchMsg" class="mt-1" style="font-size:12px;display:none;"></div>
+          </div>
+        </div>
+
+        <div class="modal-footer border-0 px-4 pb-4 pt-0">
+          <button type="button" class="btn btn-outline-secondary btn-sm px-4"
+                  data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-melcom btn-sm px-4" id="resetSubmitBtn">
+            <i class="bi bi-check-lg me-1"></i>Reset Password
+          </button>
+        </div>
+      </form>
+
+    </div>
+  </div>
+</div>
+
+<script>
+function togglePwd(inputId, iconId) {
+  const inp = document.getElementById(inputId);
+  const ico = document.getElementById(iconId);
+  inp.type      = inp.type === 'password' ? 'text' : 'password';
+  ico.className = inp.type === 'password' ? 'bi bi-eye' : 'bi bi-eye-slash';
+}
+
+function checkMatch() {
+  const np  = document.getElementById('rNewPwd').value;
+  const cp  = document.getElementById('rConfPwd').value;
+  const msg = document.getElementById('matchMsg');
+  const btn = document.getElementById('resetSubmitBtn');
+  if (!cp) { msg.style.display = 'none'; return; }
+  if (np === cp) {
+    msg.style.display = 'block';
+    msg.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>Passwords match</span>';
+    btn.disabled = false;
+  } else {
+    msg.style.display = 'block';
+    msg.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>Passwords do not match</span>';
+    btn.disabled = true;
+  }
+}
+
+// Auto-open modal if there was a reset error
+{% if reset_error %}
+document.addEventListener('DOMContentLoaded', () => {
+  new bootstrap.Modal(document.getElementById('resetModal')).show();
+});
+{% endif %}
+</script>
+{% endblock %}

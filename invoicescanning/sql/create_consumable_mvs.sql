@@ -197,8 +197,8 @@ WITH norm AS (
             WHEN LOWER(TRIM(a.a_type)) IN ('bill date mismatched', 'bill date mismatch') THEN 'Bill Date Mismatch'
             WHEN LOWER(TRIM(a.a_type)) = 'test bill'                                     THEN 'Test Bill'
             WHEN LOWER(TRIM(a.a_type)) IN ('duplicate', 'duplicate bill')                THEN 'Duplicate'
-            WHEN LOWER(TRIM(a.a_type)) IN ('wrong shop', 'wrong sho')                    THEN 'Wrong Shop'
-            WHEN LOWER(TRIM(a.a_type)) = 'high bill amount'                              THEN 'High Bill Amount'
+            WHEN LOWER(TRIM(a.a_type)) IN ('wrong shop', 'wrong sho', 'invalid store code') THEN 'Wrong Shop'
+            WHEN LOWER(TRIM(a.a_type)) = 'high bill amount'                                THEN 'High Bill Amount'
             ELSE INITCAP(TRIM(COALESCE(a.a_type, 'Unknown')))
         END                                         AS a_type_normalized,
         -- Use scanned_date when available, otherwise fall back to entry time.

@@ -1,0 +1,463 @@
+{% extends 'wastage/base.html' %}
+{% block title %}Review Incident {{ incident.incident_no }} — Cost Control Portal{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="container-fluid px-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h1><i class="bi bi-clipboard-check me-2"></i>Review Incident</h1>
+        <nav aria-label="breadcrumb">
+          <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+            <li class="breadcrumb-item"><a href="/approvals/">Approvals</a></li>
+            <li class="breadcrumb-item active">{{ incident.incident_no }}</li>
+          </ol>
+        </nav>
+      </div>
+      <span class="status-badge status-{{ incident.status }}" style="font-size:14px;padding:.5rem 1rem">
+        {{ incident.status }}
+      </span>
+    </div>
+  </div>
+</div>
+
+<div class="container-fluid px-3 pt-3">
+  <div class="row g-3">
+
+    <!-- LEFT: Incident Details -->
+    <div class="col-12 col-lg-7">
+
+      <!-- Incident Info -->
+      <div class="ccp-card mb-3 animate-fade-up">
+        <div class="ccp-card-header">
+          <i class="bi bi-info-circle"></i> Incident Information
+          <span class="ms-auto font-mono" style="font-size:13px;color:rgba(255,255,255,.8)">{{ incident.incident_no }}</span>
+        </div>
+        <div class="ccp-card-body">
+          <div class="row g-3">
+            <div class="col-6 col-md-4">
+              <div class="small text-muted fw-600 text-uppercase mb-1">Incident No</div>
+              <div class="fw-700 text-melcom-red font-mono">{{ incident.incident_no }}</div>
+            </div>
+            <div class="col-6 col-md-4">
+              <div class="small text-muted fw-600 text-uppercase mb-1">Submitted</div>
+              <div class="fw-600">{{ incident.submit_date|date:"d M Y, H:i" }}</div>
+            </div>
+            <div class="col-6 col-md-4">
+              <div class="small text-muted fw-600 text-uppercase mb-1">Department</div>
+              <span class="badge bg-secondary">{{ incident.department }}</span>
+            </div>
+            <div class="col-6 col-md-4">
+              <div class="small text-muted fw-600 text-uppercase mb-1">Submitted By</div>
+              <div class="fw-600">{{ incident.submitted_name }}</div>
+              <small class="text-muted">{{ incident.submitted_by }}</small>
+            </div>
+            <div class="col-6 col-md-4">
+              <div class="small text-muted fw-600 text-uppercase mb-1">Shop</div>
+              <div class="fw-600">{{ incident.shop_name }}</div>
+              <small class="text-muted">{{ incident.shop_code }}</small>
+            </div>
+            {% if incident.is_late_submission %}
+            <div class="col-6 col-md-4">
+              <span class="badge bg-warning text-dark px-2 py-2">
+                <i class="bi bi-clock me-1"></i>Late Submission
+              </span>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      {% if incident.status == 'Pending' %}
+      <!-- Change 7: Per-item approve/reject form -->
+      <form method="POST" action="/approvals/{{ incident.pk }}/approve/" id="decisionForm">
+        {% csrf_token %}
+
+        <div class="ccp-card mb-3 animate-fade-up animate-delay-1">
+          <div class="ccp-card-header">
+            <i class="bi bi-box-seam"></i> Per-Item Decisions
+            <span class="ms-auto badge bg-secondary">{{ items|length }} item{{ items|length|pluralize }}</span>
+          </div>
+          <div class="table-responsive">
+            <table class="ccp-table mb-0">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Item Name</th>
+                  <th>Code</th>
+                  <th>Cat</th>
+                  <th>Qty</th>
+                  <th>Approved Qty</th>
+                  <th>Reason</th>
+                  <th>Expiry</th>
+                  <th>Photo</th>
+                  <th>Price (GH₵)</th>
+                  <th>Total (GH₵)</th>
+                  <th>Decision</th>
+                  <th>Remark</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for it in items %}
+                <tr>
+                  <td>{{ forloop.counter }}</td>
+                  <td class="fw-600">{{ it.item_name }}</td>
+                  <td class="font-mono" style="font-size:12px">{{ it.item_code }}</td>
+                  <td><span class="item-cat cat-{{ it.category }} px-2 py-1 rounded">{{ it.category }}</span></td>
+                  <td class="fw-700">{{ it.quantity }}</td>
+                  <td>
+                    <input type="number" class="form-control form-control-sm"
+                           name="approved_quantity_{{ it.pk }}"
+                           value="{{ it.approved_quantity|default:it.quantity }}"
+                           step="0.001" min="0"
+                           style="min-width:80px" />
+                  </td>
+                  <td>
+                    <span class="badge bg-light text-dark border" style="font-size:10px">{{ it.reason }}</span>
+                  </td>
+                  <td>
+                    {% if it.expiry_date %}
+                      <span class="text-danger fw-600" style="font-size:12px">{{ it.expiry_date|date:"d M Y" }}</span>
+                    {% else %}
+                      <span class="text-muted">—</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if it.expiry_photo_path %}
+                    <button type="button" class="btn btn-sm btn-outline-primary px-2 py-1"
+                            onclick="previewExpiryPhoto({{ it.pk }}, '{{ it.item_name|escapejs }}')"
+                            title="Preview expiry photo">
+                      <i class="bi bi-eye"></i>
+                    </button>
+                    {% else %}
+                    <span class="text-muted" style="font-size:12px">—</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ it.selling_price|floatformat:2 }}</td>
+                  <td class="fw-700" style="color:var(--melcom-red)">{{ it.total_value|floatformat:2 }}</td>
+                  <td>
+                    <select class="form-select form-select-sm item-action-select"
+                            name="item_action_{{ it.pk }}"
+                            style="min-width:120px"
+                            onchange="highlightRow(this)">
+                      <option value="Keep Pending">Keep Pending</option>
+                      <option value="Approve">Approve</option>
+                      <option value="Reject">Reject</option>
+                    </select>
+                  </td>
+                  <td>
+                    <textarea class="form-control form-control-sm"
+                              name="item_remark_{{ it.pk }}"
+                              rows="2" maxlength="300"
+                              style="min-width:150px"
+                              placeholder="Supervisor note…"></textarea>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+              <tfoot>
+                <tr style="background:rgba(227,24,55,.05)">
+                  <td colspan="10" class="fw-700 text-end">Grand Total:</td>
+                  <td class="fw-800 fs-6" style="color:var(--melcom-red)">{{ items_total|floatformat:2 }}</td>
+                  <td colspan="2"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <div class="ccp-card-body pt-0">
+            <div class="d-flex justify-content-end gap-2 mt-3">
+              <a href="/approvals/" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i>Back
+              </a>
+              <button type="submit" class="btn btn-approve px-4 py-2" id="saveDecisionsBtn">
+                <i class="bi bi-check-circle me-2"></i>Save Decisions
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </form>
+      {% else %}
+      <!-- Read-only item details for approved/rejected incidents -->
+      <div class="ccp-card mb-3 animate-fade-up animate-delay-1">
+        <div class="ccp-card-header">
+          <i class="bi bi-box-seam"></i> Item Details
+          <span class="ms-auto badge bg-secondary">{{ items|length }} item{{ items|length|pluralize }}</span>
+        </div>
+        <div class="table-responsive">
+          <table class="ccp-table mb-0">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Item Name</th>
+                <th>Code</th>
+                <th>Category</th>
+                <th>Qty</th>
+                <th>Approved Qty</th>
+                <th>Reason</th>
+                <th>Expiry</th>
+                <th>Photo</th>
+                <th>Price (GH₵)</th>
+                <th>Total (GH₵)</th>
+                <th>Status</th>
+                <th>Supervisor Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for it in items %}
+              <tr>
+                <td>{{ forloop.counter }}</td>
+                <td class="fw-600">{{ it.item_name }}</td>
+                <td class="font-mono" style="font-size:12px">{{ it.item_code }}</td>
+                <td><span class="item-cat cat-{{ it.category }} px-2 py-1 rounded">{{ it.category }}</span></td>
+                <td class="fw-700">{{ it.quantity }}</td>
+                <td class="fw-600" style="color:var(--melcom-green)">{{ it.approved_quantity|default:"—" }}</td>
+                <td>
+                  <span class="badge bg-light text-dark border" style="font-size:10px">{{ it.reason }}</span>
+                </td>
+                <td>
+                  {% if it.expiry_date %}
+                    <span class="text-danger fw-600" style="font-size:12px">{{ it.expiry_date|date:"d M Y" }}</span>
+                  {% else %}
+                    <span class="text-muted">—</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if it.expiry_photo_path %}
+                  <button type="button" class="btn btn-sm btn-outline-secondary px-2 py-1"
+                          onclick="previewExpiryPhoto({{ it.pk }}, '{{ it.item_name|escapejs }}')"
+                          title="Preview expiry photo">
+                    <i class="bi bi-eye"></i>
+                  </button>
+                  {% else %}
+                  <span class="text-muted" style="font-size:12px">—</span>
+                  {% endif %}
+                </td>
+                <td>{{ it.selling_price|floatformat:2 }}</td>
+                <td class="fw-700" style="color:var(--melcom-red)">{{ it.total_value|floatformat:2 }}</td>
+                <td>
+                  <span class="status-badge status-{{ it.status }}" style="font-size:11px">{{ it.status }}</span>
+                </td>
+                <td style="font-size:12px">{{ it.supervisor_remark|default:"—" }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr style="background:rgba(227,24,55,.05)">
+                <td colspan="10" class="fw-700 text-end">Grand Total:</td>
+                <td class="fw-800 fs-6" style="color:var(--melcom-red)">{{ items_total|floatformat:2 }}</td>
+                <td colspan="2"></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Approval Info (if approved/rejected) -->
+      {% if incident.status == 'Approved' or incident.status == 'Rejected' %}
+      <div class="ccp-card mb-3 animate-fade-up"
+           style="border-left:4px solid {% if incident.status == 'Approved' %}var(--melcom-green){% else %}#dc3545{% endif %}">
+        <div class="ccp-card-header"
+             style="background:linear-gradient(135deg,{% if incident.status == 'Approved' %}#155724,#27ae60{% else %}#7b1e1e,#dc3545{% endif %})">
+          <i class="bi bi-{% if incident.status == 'Approved' %}check-circle{% else %}x-circle{% endif %}"></i>
+          {{ incident.status }} Details
+        </div>
+        <div class="ccp-card-body">
+          <div class="row g-3">
+            <div class="col-6">
+              <div class="small text-muted fw-600 text-uppercase mb-1">Decision By</div>
+              <div class="fw-700">{{ incident.approved_name }}</div>
+              <small class="text-muted">{{ incident.approved_by }}</small>
+            </div>
+            <div class="col-6">
+              <div class="small text-muted fw-600 text-uppercase mb-1">Decision Date</div>
+              <div class="fw-600">{{ incident.approved_date|date:"d M Y, H:i" }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
+
+    <!-- RIGHT: Media Viewer (no upload for supervisor — Change 2) -->
+    <div class="col-12 col-lg-5">
+
+      <!-- Media viewer — always show read-only evidence -->
+      <div class="ccp-card mb-3 animate-fade-up animate-delay-1">
+        <div class="ccp-card-header">
+          <i class="bi bi-camera"></i> Media Evidence
+        </div>
+        <div class="ccp-card-body">
+          {% if incident.photo_path or incident.video_path %}
+            {% if incident.photo_path %}
+            <div class="mb-3">
+              <div class="small text-muted fw-600 text-uppercase mb-2">
+                <i class="bi bi-image me-1"></i>Photo Evidence
+              </div>
+              <img src="/approvals/{{ incident.pk }}/media/photo/"
+                   class="img-fluid rounded shadow-sm"
+                   style="max-height:280px;object-fit:contain;width:100%"
+                   alt="Wastage photo for {{ incident.incident_no }}"
+                   onerror="this.closest('.mb-3').innerHTML='<div class=\'text-muted\' style=\'font-size:13px\'><i class=\'bi bi-image text-muted me-1\'></i>Photo not accessible (network drive may be offline)</div>'" />
+            </div>
+            {% endif %}
+
+            {% if incident.video_path %}
+            <div class="mb-2">
+              <div class="small text-muted fw-600 text-uppercase mb-2">
+                <i class="bi bi-camera-video me-1"></i>Video Evidence
+              </div>
+              <video controls class="w-100 rounded shadow-sm" style="max-height:280px"
+                     onerror="this.closest('.mb-2').innerHTML='<div class=\'text-muted\' style=\'font-size:13px\'><i class=\'bi bi-camera-video text-muted me-1\'></i>Video not accessible</div>'">
+                <source src="/approvals/{{ incident.pk }}/media/video/" />
+                Your browser does not support video playback.
+              </video>
+            </div>
+            {% endif %}
+          {% else %}
+          <div class="text-center py-3 text-muted" style="font-size:13px">
+            <i class="bi bi-dash-circle me-1"></i>No media evidence was attached to this incident.
+            {% if incident.status == 'Pending' %}
+            <div class="mt-2 small text-warning">
+              <i class="bi bi-exclamation-triangle me-1"></i>
+              Media must be uploaded by the staff member who submitted this incident before it can be approved.
+            </div>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Back Button -->
+      <a href="/approvals/" class="btn btn-outline-secondary w-100 mt-2 animate-fade-up animate-delay-3">
+        <i class="bi bi-arrow-left me-2"></i>Back to Approvals
+      </a>
+
+    </div>
+  </div>
+</div>
+
+<!-- Expiry Photo Preview Modal -->
+<div class="modal fade" id="expiryPhotoModal" tabindex="-1" aria-labelledby="expiryPhotoModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content" style="background:var(--bg-card);border:1px solid var(--border-color)">
+      <div class="modal-header" style="border-bottom:1px solid var(--border-color)">
+        <h5 class="modal-title fw-700" id="expiryPhotoModalLabel">
+          <i class="bi bi-image me-2"></i>Expiry Photo
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body text-center p-3" id="expiryPhotoBody">
+        <div class="text-muted py-4">
+          <div class="spinner-border text-primary mb-2"></div>
+          <div>Loading...</div>
+        </div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--border-color)">
+        <a href="#" id="expiryPhotoOpenBtn" target="_blank" class="btn btn-outline-secondary btn-sm d-none">
+          <i class="bi bi-box-arrow-up-right me-1"></i>Open in New Tab
+        </a>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Highlight row based on decision
+function highlightRow(select) {
+  const row = select.closest('tr');
+  if (!row) return;
+  row.classList.remove('table-success', 'table-danger', 'table-warning');
+  if (select.value === 'Approve') row.classList.add('table-success');
+  else if (select.value === 'Reject') row.classList.add('table-danger');
+}
+
+// Save Decisions form submit
+const decisionForm = document.getElementById('decisionForm');
+if (decisionForm) {
+  decisionForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const btn = document.getElementById('saveDecisionsBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
+
+    const fd = new FormData(decisionForm);
+
+    fetch(decisionForm.action, {
+      method: 'POST',
+      body: fd,
+      headers: { 'X-CSRFToken': fd.get('csrfmiddlewaretoken') },
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        showToast('Decisions saved for incident ' + data.incident_no, 'success');
+        setTimeout(() => { window.location.href = '/approvals/'; }, 1200);
+      } else {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check-circle me-2"></i>Save Decisions';
+        showToast('Error: ' + (data.error || 'Unknown error'), 'danger');
+      }
+    })
+    .catch(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-check-circle me-2"></i>Save Decisions';
+      showToast('Network error. Please try again.', 'danger');
+    });
+  });
+}
+
+function showToast(message, type) {
+  const el = document.createElement('div');
+  el.className = `alert alert-${type} alert-dismissible fade show position-fixed shadow-lg`;
+  el.style.cssText = 'bottom:20px;right:20px;z-index:9999;min-width:280px;max-width:400px';
+  el.innerHTML = `${message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 5000);
+}
+
+// Per-item expiry photo preview
+function previewExpiryPhoto(itemPk, itemName) {
+  const url = `/item/${itemPk}/expiry-photo/`;
+  const body = document.getElementById('expiryPhotoBody');
+  const openBtn = document.getElementById('expiryPhotoOpenBtn');
+  const label = document.getElementById('expiryPhotoModalLabel');
+
+  label.innerHTML = `<i class="bi bi-image me-2"></i>Expiry Photo — ${itemName}`;
+  body.innerHTML = `<div class="text-muted py-4"><div class="spinner-border text-primary mb-2"></div><div>Loading...</div></div>`;
+  openBtn.href = url;
+  openBtn.classList.add('d-none');
+
+  const modal = new bootstrap.Modal(document.getElementById('expiryPhotoModal'));
+  modal.show();
+
+  // Try loading as image; fall back to PDF embed if it fails
+  const img = new Image();
+  img.onload = function() {
+    body.innerHTML = `<img src="${url}" class="img-fluid rounded shadow-sm" style="max-height:70vh;object-fit:contain" alt="Expiry photo for ${itemName}" />`;
+    openBtn.classList.remove('d-none');
+  };
+  img.onerror = function() {
+    // Likely a PDF — embed it
+    body.innerHTML = `
+      <div class="d-flex flex-column align-items-center gap-3 py-3">
+        <i class="bi bi-file-pdf-fill text-danger" style="font-size:3rem"></i>
+        <div class="fw-600">PDF document</div>
+        <a href="${url}" target="_blank" class="btn btn-outline-danger">
+          <i class="bi bi-box-arrow-up-right me-1"></i>Open PDF
+        </a>
+      </div>`;
+    openBtn.classList.remove('d-none');
+  };
+  img.src = url;
+}
+</script>
+{% endblock %}

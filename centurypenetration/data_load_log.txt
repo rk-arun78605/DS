@@ -1,0 +1,62 @@
+2025-12-11 14:54:07,467 - INFO - ============================================================
+2025-12-11 14:54:07,467 - INFO - CENTURY STOCK PENETRATION - DATA LOADING
+2025-12-11 14:54:07,467 - INFO - Started at: 2025-12-11 14:54:07.467939
+2025-12-11 14:54:07,467 - INFO - ============================================================
+2025-12-11 14:54:07,467 - INFO - ============================================================
+2025-12-11 14:54:07,467 - INFO - LOADING REORDER LEVEL DATA
+2025-12-11 14:54:07,475 - INFO - ============================================================
+2025-12-11 14:54:07,475 - ERROR - File not found: D:\Dashboard Code\NO_WH\DS\centurypenetration\GEN_reorder_till10dec25.csv
+2025-12-11 14:54:07,476 - INFO - ============================================================
+2025-12-11 14:54:07,476 - INFO - LOADING SIT DATA
+2025-12-11 14:54:07,476 - INFO - ============================================================
+2025-12-11 14:54:07,476 - ERROR - File not found: D:\Dashboard Code\NO_WH\DS\centurypenetration\GEN_SIT_till10dec25.csv
+2025-12-11 14:54:07,477 - INFO - ============================================================
+2025-12-11 14:54:07,477 - INFO - LOADING SALES DATA
+2025-12-11 14:54:07,477 - INFO - ============================================================
+2025-12-11 14:54:07,477 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\jan25.csv
+2025-12-11 14:54:07,477 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\feb25.csv
+2025-12-11 14:54:07,479 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\mar25.csv
+2025-12-11 14:54:07,479 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\apr25.csv
+2025-12-11 14:54:07,479 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\may25.csv
+2025-12-11 14:54:07,479 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\jun25.csv
+2025-12-11 14:54:07,479 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\jul25.csv
+2025-12-11 14:54:07,480 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\aug25.csv
+2025-12-11 14:54:07,480 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\sep25.csv
+2025-12-11 14:54:07,480 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\oct25.csv
+2025-12-11 14:54:07,480 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\nov25.csv
+2025-12-11 14:54:07,480 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\dec25.csv
+2025-12-11 14:54:07,485 - INFO - ============================================================
+2025-12-11 14:54:07,485 - INFO - DATA LOADING COMPLETED
+2025-12-11 14:54:07,485 - INFO - Duration: 0:00:00.018015
+2025-12-11 14:54:07,490 - INFO - ============================================================
+2025-12-11 16:43:25,085 - INFO - ============================================================
+2025-12-11 16:43:25,085 - INFO - CENTURY STOCK PENETRATION - DATA LOADING
+2025-12-11 16:43:25,085 - INFO - Started at: 2025-12-11 16:43:25.085372
+2025-12-11 16:43:25,085 - INFO - ============================================================
+2025-12-11 16:43:25,085 - INFO - ============================================================
+2025-12-11 16:43:25,085 - INFO - LOADING REORDER LEVEL DATA
+2025-12-11 16:43:25,085 - INFO - ============================================================
+2025-12-11 16:43:25,099 - ERROR - File not found: D:\Dashboard Code\NO_WH\DS\centurypenetration\GEN_reorder_till10dec25.csv
+2025-12-11 16:43:25,099 - INFO - ============================================================
+2025-12-11 16:43:25,099 - INFO - LOADING SIT DATA
+2025-12-11 16:43:25,099 - INFO - ============================================================
+2025-12-11 16:43:25,099 - ERROR - File not found: D:\Dashboard Code\NO_WH\DS\centurypenetration\GEN_SIT_till10dec25.csv
+2025-12-11 16:43:25,100 - INFO - ============================================================
+2025-12-11 16:43:25,100 - INFO - LOADING SALES DATA
+2025-12-11 16:43:25,100 - INFO - ============================================================
+2025-12-11 16:43:25,100 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\jan25.csv
+2025-12-11 16:43:25,101 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\feb25.csv
+2025-12-11 16:43:25,101 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\mar25.csv
+2025-12-11 16:43:25,101 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\apr25.csv
+2025-12-11 16:43:25,101 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\may25.csv
+2025-12-11 16:43:25,101 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\jun25.csv
+2025-12-11 16:43:25,101 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\jul25.csv
+2025-12-11 16:43:25,101 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\aug25.csv
+2025-12-11 16:43:25,102 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\sep25.csv
+2025-12-11 16:43:25,102 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\oct25.csv
+2025-12-11 16:43:25,102 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\nov25.csv
+2025-12-11 16:43:25,102 - WARNING - File not found (skipping): D:\Dashboard Code\NO_WH\DS\centurypenetration\dec25.csv
+2025-12-11 16:43:25,105 - INFO - ============================================================
+2025-12-11 16:43:25,105 - INFO - DATA LOADING COMPLETED
+2025-12-11 16:43:25,105 - INFO - Duration: 0:00:00.019731
+2025-12-11 16:43:25,108 - INFO - ============================================================

@@ -1,0 +1,141 @@
+{% extends 'wastage/base.html' %}
+{% block title %}Pending Approvals — Cost Control Portal{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="container-fluid px-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h1><i class="bi bi-clipboard-check me-2"></i>Approvals</h1>
+        <nav aria-label="breadcrumb">
+          <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+            <li class="breadcrumb-item active">Approvals</li>
+          </ol>
+        </nav>
+      </div>
+      <div class="text-end d-none d-md-block">
+        <div style="font-size:1rem;color:rgba(255,255,255,.9);font-weight:600">
+          GH₵{{ today_total|floatformat:2 }} Total Today
+        </div>
+        <div style="font-size:12px;color:rgba(255,255,255,.6)">{{ staff.shop_name }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="container-fluid px-3 pt-3">
+
+  <!-- Filters -->
+  <div class="ccp-card mb-3 animate-fade-up">
+    <div class="ccp-card-body">
+      <form method="GET" class="row g-2 align-items-end">
+        <div class="col-6 col-md-3">
+          <label class="form-label"><i class="bi bi-calendar3 me-1"></i>Date</label>
+          <input type="date" name="date" class="form-control" value="{{ filter_date }}" />
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label"><i class="bi bi-funnel me-1"></i>Status</label>
+          <select name="status" class="form-select">
+            {% for val, label in status_choices %}
+            <option value="{{ val }}" {% if filter_status == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-3">
+          <button type="submit" class="btn btn-melcom w-100">
+            <i class="bi bi-search me-2"></i>Filter
+          </button>
+        </div>
+        <div class="col-12 col-md-3">
+          <a href="/approvals/" class="btn btn-outline-secondary w-100">
+            <i class="bi bi-x-circle me-2"></i>Clear
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Incidents List -->
+  {% if incidents %}
+  <div class="ccp-card animate-fade-up">
+    <div class="ccp-card-header">
+      <i class="bi bi-list-ul"></i>
+      {{ incidents|length }} Incident{{ incidents|length|pluralize }} &mdash; {{ filter_date }}
+      {% if filter_status != 'All' %}
+      <span class="badge ms-2 {% if filter_status == 'Pending' %}bg-warning text-dark{% elif filter_status == 'Approved' %}bg-success{% else %}bg-danger{% endif %}">
+        {{ filter_status }}
+      </span>
+      {% endif %}
+    </div>
+    <div class="table-responsive">
+      <table class="ccp-table">
+        <thead>
+          <tr>
+            <th>Incident No</th>
+            <th>Submitted By</th>
+            <th>Dept</th>
+            <th>Items</th>
+            <th>Total Value (GH₵)</th>
+            <th>Reason</th>
+            <th>Status</th>
+            <th>Media</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inc in incidents %}
+          <tr>
+            <td data-label="Incident No">
+              <span class="font-mono fw-700 text-melcom-red" style="font-size:12px">{{ inc.incident_no }}</span>
+              <div style="font-size:10px;color:var(--text-muted)">{{ inc.submit_date|date:"d M H:i" }}</div>
+            </td>
+            <td data-label="Submitted By">
+              <div class="fw-600">{{ inc.submitted_name }}</div>
+              <small class="text-muted">{{ inc.submitted_by }}</small>
+            </td>
+            <td data-label="Dept"><span class="badge bg-secondary">{{ inc.department }}</span></td>
+            <td data-label="Items">
+              {% if inc.item_count > 1 %}
+              <span class="badge bg-info text-dark">{{ inc.item_count }} items</span>
+              {% else %}
+              <div style="font-size:13px">{{ inc.item_name|truncatechars:25 }}</div>
+              <small class="text-muted font-mono">{{ inc.item_code }}</small>
+              {% endif %}
+            </td>
+            <td data-label="Total Value" class="fw-700" style="color:var(--melcom-red)">
+              {{ inc.total_value_sum|floatformat:2 }}
+            </td>
+            <td data-label="Reason"><span class="badge bg-light text-dark border" style="font-size:10px">{{ inc.reason }}</span></td>
+            <td data-label="Status"><span class="status-badge status-{{ inc.status }}">{{ inc.status }}</span></td>
+            <td data-label="Media">
+              {% if inc.photo_path %}<i class="bi bi-image-fill text-success me-1" title="Photo uploaded"></i>{% endif %}
+              {% if inc.video_path %}<i class="bi bi-camera-video-fill text-primary" title="Video uploaded"></i>{% endif %}
+              {% if not inc.photo_path and not inc.video_path %}<i class="bi bi-dash text-muted"></i>{% endif %}
+            </td>
+            <td data-label="Action">
+              <a href="/approvals/{{ inc.pk }}/" class="btn btn-sm btn-melcom">
+                <i class="bi bi-eye me-1"></i>Review
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% else %}
+  <div class="ccp-card animate-fade-up">
+    <div class="ccp-card-body text-center py-5">
+      <i class="bi bi-check-circle display-4 text-success d-block mb-3"></i>
+      <div class="fw-700 mb-1">No incidents found</div>
+      <div class="text-muted" style="font-size:13px">
+        No incidents matching the selected filters for {{ staff.shop_name }}.
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

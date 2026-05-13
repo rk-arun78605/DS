@@ -1,0 +1,44 @@
+[2025-12-13 10:48:43] ================================================================================
+[2025-12-13 10:48:43] BARCODE MASTER DATA LOADER - DAILY UPDATE
+[2025-12-13 10:48:43] ================================================================================
+[2025-12-13 10:48:43] 
+[1/4] Locating barcodedata file...
+[2025-12-13 10:48:43] ✅ Found file: D:/Dashboard Code/NO_WH/DS/barcode_matcher/sample_data\barcodedata.csv
+[2025-12-13 10:48:43]    File size: 4705.41 KB
+[2025-12-13 10:48:43] 
+[2/4] Reading barcode file...
+[2025-12-13 10:48:43] ❌ Error reading file: 'utf-8' codec can't decode byte 0xa0 in position 123874: invalid start byte
+[2025-12-13 10:48:43] ❌ No valid data to load
+[2025-12-13 10:49:17] ================================================================================
+[2025-12-13 10:49:17] BARCODE MASTER DATA LOADER - DAILY UPDATE
+[2025-12-13 10:49:17] ================================================================================
+[2025-12-13 10:49:17] 
+[1/4] Locating barcodedata file...
+[2025-12-13 10:49:17] ✅ Found file: D:/Dashboard Code/NO_WH/DS/barcode_matcher/sample_data\barcodedata.csv
+[2025-12-13 10:49:17]    File size: 4705.41 KB
+[2025-12-13 10:49:17] 
+[2/4] Reading barcode file...
+[2025-12-13 10:49:17] ✅ Read CSV with encoding: latin1
+[2025-12-13 10:49:17] ✅ Read 229017 valid rows from file
+[2025-12-13 10:49:17] ✅ Loaded 229017 rows
+[2025-12-13 10:49:17]    Sample barcodes: ['033844004019', '4607048108727', 'G524']
+[2025-12-13 10:49:17] 
+[3/4] Connecting to database...
+[2025-12-13 10:49:17] ✅ Connected to salesdata on port 3307
+[2025-12-13 10:49:17] 
+[4/4] Loading new entries to database...
+[2025-12-13 10:49:17] 🔍 Checking for existing barcodes...
+[2025-12-13 10:49:17]    Found 0 existing barcodes in database
+[2025-12-13 10:49:17] 📦 Found 229017 NEW entries to load
+[2025-12-13 10:49:41] ✅ Successfully inserted 17 new entries
+[2025-12-13 10:49:41] ✅ Load complete: 17 new barcodes added
+[2025-12-13 10:49:42] 
+📊 DATABASE STATISTICS:
+[2025-12-13 10:49:42]    Total Barcodes: 229,017
+[2025-12-13 10:49:42]    Unique Item Codes: 162,493
+[2025-12-13 10:49:42]    Oldest Entry: 2025-12-13 10:49:17.786455
+[2025-12-13 10:49:42]    Newest Entry: 2025-12-13 10:49:17.786455
+[2025-12-13 10:49:42] 
+================================================================================
+[2025-12-13 10:49:42] LOAD COMPLETED SUCCESSFULLY
+[2025-12-13 10:49:42] ================================================================================

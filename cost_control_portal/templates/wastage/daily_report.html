@@ -1,0 +1,184 @@
+{% extends 'wastage/base.html' %}
+{% block title %}Daily Report — Cost Control Portal{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="container-fluid px-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h1><i class="bi bi-bar-chart me-2"></i>Daily Wastage Report</h1>
+        <nav aria-label="breadcrumb">
+          <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+            <li class="breadcrumb-item active">Daily Report</li>
+          </ol>
+        </nav>
+      </div>
+      <div class="text-end d-none d-md-block">
+        <div class="fw-700" style="color:#fff;font-size:1.1rem">{{ staff.shop_name }}</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.7)">{{ report_date|date:"l, d M Y" }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="container-fluid px-3 pt-3">
+
+  <!-- Date Selector -->
+  <div class="ccp-card mb-3 animate-fade-up">
+    <div class="ccp-card-body">
+      <form method="GET" class="row g-2 align-items-end">
+        <div class="col-8 col-md-4">
+          <label class="form-label"><i class="bi bi-calendar3 me-1"></i>Report Date</label>
+          <input type="date" name="date" class="form-control" value="{{ report_date|date:'Y-m-d' }}" max="{{ today|date:'Y-m-d' }}" />
+        </div>
+        <div class="col-4 col-md-3">
+          <button type="submit" class="btn btn-melcom w-100">
+            <i class="bi bi-search me-1"></i>View
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Summary Stats -->
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-md-3 animate-fade-up">
+      <div class="stat-card warning">
+        <div class="d-flex align-items-center gap-3">
+          <div class="stat-icon gold"><i class="bi bi-currency-dollar"></i></div>
+          <div>
+            <div class="stat-value" style="font-size:1.3rem">GH₵{{ grand_total|floatformat:2 }}</div>
+            <div class="stat-label">Total Wastage Value</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3 animate-fade-up animate-delay-1">
+      <div class="stat-card danger">
+        <div class="d-flex align-items-center gap-3">
+          <div class="stat-icon red"><i class="bi bi-list-check"></i></div>
+          <div>
+            <div class="stat-value">{{ incidents|length }}</div>
+            <div class="stat-label">Total Incidents</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+
+    <!-- By Department -->
+    <div class="col-12 col-md-5 animate-fade-up">
+      <div class="ccp-card h-100">
+        <div class="ccp-card-header"><i class="bi bi-pie-chart"></i> By Department</div>
+        <div class="ccp-card-body p-0">
+          <table class="ccp-table">
+            <thead>
+              <tr><th>Department</th><th>Count</th><th>Total (GH₵)</th></tr>
+            </thead>
+            <tbody>
+              {% for row in summary %}
+              <tr>
+                <td data-label="Department"><span class="badge bg-secondary">{{ row.department }}</span></td>
+                <td data-label="Count" class="fw-600">{{ row.count }}</td>
+                <td data-label="Total" class="fw-700">{{ row.total|floatformat:2 }}</td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="3" class="text-center text-muted py-4">No data</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- By Reason -->
+    <div class="col-12 col-md-7 animate-fade-up animate-delay-1">
+      <div class="ccp-card h-100">
+        <div class="ccp-card-header"><i class="bi bi-bar-chart-line"></i> By Reason</div>
+        <div class="ccp-card-body p-0">
+          <table class="ccp-table">
+            <thead>
+              <tr><th>Reason</th><th>Count</th><th>Total (GH₵)</th></tr>
+            </thead>
+            <tbody>
+              {% for row in by_reason %}
+              <tr>
+                <td data-label="Reason"><span class="badge bg-light text-dark border">{{ row.reason }}</span></td>
+                <td data-label="Count" class="fw-600">{{ row.count }}</td>
+                <td data-label="Total" class="fw-700">{{ row.total|floatformat:2 }}</td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="3" class="text-center text-muted py-4">No data</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Detail Table -->
+  {% if incidents %}
+  <div class="ccp-card mt-3 animate-fade-up animate-delay-2">
+    <div class="ccp-card-header">
+      <i class="bi bi-table"></i> Incident Details — {{ report_date|date:"d M Y" }}
+    </div>
+    <div class="table-responsive">
+      <table class="ccp-table">
+        <thead>
+          <tr>
+            <th>Incident No</th>
+            <th>Dept</th>
+            <th>Submitted By</th>
+            <th>Item</th>
+            <th>Category</th>
+            <th>Qty</th>
+            <th>Value (GH₵)</th>
+            <th>Reason</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inc in incidents %}
+          <tr>
+            <td data-label="Incident No">
+              <span class="font-mono fw-700 text-melcom-red" style="font-size:11px">{{ inc.incident_no }}</span>
+            </td>
+            <td data-label="Dept"><span class="badge bg-secondary" style="font-size:10px">{{ inc.department }}</span></td>
+            <td data-label="Submitted By">{{ inc.submitted_name }}</td>
+            <td data-label="Item">
+              <div>{{ inc.item_name|truncatechars:25 }}</div>
+              <small class="text-muted font-mono">{{ inc.item_code }}</small>
+            </td>
+            <td data-label="Category">
+              <span class="item-cat cat-{{ inc.category }} px-2 py-1 rounded">{{ inc.category }}</span>
+            </td>
+            <td data-label="Qty">{{ inc.quantity }} <small class="text-muted">{{ inc.uom }}</small></td>
+            <td data-label="Value" class="fw-700">{{ inc.total_value|floatformat:2 }}</td>
+            <td data-label="Reason">
+              <span class="badge bg-light text-dark border" style="font-size:10px">{{ inc.reason }}</span>
+            </td>
+            <td data-label="Status">
+              <span class="status-badge status-{{ inc.status }}">{{ inc.status }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr style="background:#f8f9fa;font-weight:700">
+            <td colspan="6" class="text-end px-4">TOTAL</td>
+            <td class="px-4" style="color:var(--melcom-red);font-size:1.1rem">GH₵{{ grand_total|floatformat:2 }}</td>
+            <td colspan="2"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

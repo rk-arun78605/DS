@@ -1,0 +1,70 @@
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual environments (any depth) ─────────────────────────────────────────
+**/.venv/
+**/.venv_new/
+**/.venv311/
+**/venv/
+**/env/
+**/.env/
+.venv/
+.venv_new/
+.venv311/
+venv/
+
+# ── Secrets / credentials ─────────────────────────────────────────────────────
+.env
+.env.*
+secrets.py
+*_secrets.py
+
+# ── Django ────────────────────────────────────────────────────────────────────
+cost_control_portal/staticfiles/
+cost_control_portal/media/
+cost_control_portal/.venv/
+cost_control_portal/__pycache__/
+
+# ── Temp / debug scripts ──────────────────────────────────────────────────────
+_tmp_*
+*.log
+*.txt.bak
+flask_log.txt
+invoicescanning/tmp_*.txt
+invoicescanning/tmp_*.sql
+invoicescanning/update_mv_output.txt
+invoicescanning/debug_assembled_query.sql
+
+# ── Backup folders ────────────────────────────────────────────────────────────
+"offloadingvsloading backup/"
+invoicescanning/consumable_till_dashboard_backup_*.py
+
+# ── Caches ────────────────────────────────────────────────────────────────────
+_index_cache.pkl
+.streamlit/
+*.cache
+
+# ── OS / IDE ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Accidental files ──────────────────────────────────────────────────────────
+=
+
+# ── Large data / backup files ─────────────────────────────────────────────────
+*.xlsx
+*.csv
+BACKUP_*
+FlipHTML5_Pages/

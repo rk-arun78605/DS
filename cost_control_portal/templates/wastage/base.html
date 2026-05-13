@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+  <!-- Theme / branding -->
+  <meta name="theme-color" content="#e31837" />
+  <meta name="application-name" content="CostControl" />
+  <meta name="description" content="Melcom Wastage &amp; Incident Management" />
+
+  <!-- ── iOS PWA (Safari "Add to Home Screen") ── -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="CostControl" />
+  <link rel="apple-touch-icon" sizes="152x152" href="/static/img/icon-152.png" />
+  <link rel="apple-touch-icon" sizes="192x192" href="/static/img/icon-192.png" />
+
+  <!-- ── Android / Chrome ── -->
+  <meta name="mobile-web-app-capable" content="yes" />
+
+  <!-- ── Windows tiles ── -->
+  <meta name="msapplication-TileColor" content="#e31837" />
+  <meta name="msapplication-TileImage" content="/static/img/icon-144.png" />
+
+  <title>{% block title %}Melcom Cost Control Portal{% endblock %}</title>
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="/manifest.json" />
+
+  <!-- Favicons -->
+  <link rel="icon" type="image/png" sizes="96x96" href="/static/img/icon-96.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/img/icon-192.png" />
+
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet" />
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="/static/css/main.css" />
+  {% block extra_css %}{% endblock %}
+</head>
+<body>
+
+<!-- TOP NAVBAR -->
+<nav class="navbar navbar-expand-lg navbar-dark ccp-navbar sticky-top">
+  <div class="container-fluid px-3">
+    <!-- Brand -->
+    <a class="navbar-brand d-flex align-items-center gap-2" href="/">
+      <img src="/static/img/melcom-logo.png" alt="Melcom" height="36" class="melcom-logo" onerror="this.style.display='none'" />
+      <span class="brand-title d-none d-sm-inline">Cost Control Portal</span>
+      <span class="brand-title d-inline d-sm-none">CCP</span>
+    </a>
+
+    <!-- Mobile toggler -->
+    <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navMain">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div class="collapse navbar-collapse" id="navMain">
+      {% if user.is_authenticated %}
+      <ul class="navbar-nav me-auto ms-3">
+
+        {% if staff and staff.role == 'management' or user.is_staff %}
+        {# ── MANAGEMENT NAV ─────────────────────────────────────── #}
+        <li class="nav-item">
+          <a class="nav-link {% if 'mgmt' in request.path %}active{% endif %}" href="/mgmt/">
+            <i class="bi bi-shield-check me-1"></i> Management Overview
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if 'analytics' in request.path %}active{% endif %}" href="/analytics/">
+            <i class="bi bi-graph-up-arrow me-1"></i> Analytics
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if 'reports' in request.path %}active{% endif %}" href="/reports/daily/">
+            <i class="bi bi-bar-chart me-1"></i> Reports
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if 'scanner' in request.path %}active{% endif %}" href="/scanner/">
+            <i class="bi bi-camera me-1"></i> AI Scanner
+          </a>
+        </li>
+
+        {% elif staff and staff.is_approver %}
+        {# ── SUPERVISOR / MANAGER NAV ───────────────────────────── #}
+        <li class="nav-item">
+          <a class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="/">
+            <i class="bi bi-house-door me-1"></i> Dashboard
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if 'approvals' in request.path %}active{% endif %}" href="/approvals/">
+            <i class="bi bi-clipboard-check me-1"></i> Approvals
+            {% if pending_count %}<span class="badge bg-danger ms-1">{{ pending_count }}</span>{% endif %}
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if 'reports' in request.path %}active{% endif %}" href="/reports/daily/">
+            <i class="bi bi-bar-chart me-1"></i> Reports
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if 'wip' in request.path %}active{% endif %}" href="/wip/">
+            <i class="bi bi-layers me-1"></i> WIP Master
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if 'scanner' in request.path %}active{% endif %}" href="/scanner/">
+            <i class="bi bi-camera me-1"></i> AI Scanner
+          </a>
+        </li>
+
+        {% else %}
+        {# ── STAFF NAV ──────────────────────────────────────────── #}
+        <li class="nav-item">
+          <a class="nav-link {% if 'submit' in request.path %}active{% endif %}" href="/submit/">
+            <i class="bi bi-plus-circle me-1"></i> Submit Wastage
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if 'my-incidents' in request.path %}active{% endif %}" href="/my-incidents/">
+            <i class="bi bi-list-ul me-1"></i> My Incidents
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if 'scanner' in request.path %}active{% endif %}" href="/scanner/">
+            <i class="bi bi-camera me-1"></i> AI Scanner
+          </a>
+        </li>
+        {% endif %}
+      </ul>
+
+      <!-- User Menu -->
+      <ul class="navbar-nav ms-auto align-items-center">
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle d-flex align-items-center gap-2" href="#" id="userMenu" data-bs-toggle="dropdown">
+            <div class="user-avatar">
+              {{ user.username|first|upper }}
+            </div>
+            <span class="d-none d-md-inline text-light">
+              {% if staff %}{{ staff.emp_name|truncatechars:20 }}{% else %}{{ user.username }}{% endif %}
+            </span>
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end shadow-lg">
+            {% if staff %}
+            <li class="dropdown-header px-3 py-2">
+              <div class="fw-bold text-dark">{{ staff.emp_name }}</div>
+              <small class="text-muted">{{ staff.shop_name }}</small><br/>
+              <span class="badge bg-primary mt-1">{{ staff.get_role_display }}</span>
+            </li>
+            <li><hr class="dropdown-divider"></li>
+            {% endif %}
+            <li><a class="dropdown-item" href="/change-password/"><i class="bi bi-key me-2"></i>Change Password</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item text-danger" href="/logout/"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
+          </ul>
+        </li>
+      </ul>
+      {% endif %}
+    </div>
+  </div>
+</nav>
+
+<!-- MAIN CONTENT -->
+<main class="ccp-main">
+  <!-- Flash Messages -->
+  {% if messages %}
+  <div class="container-fluid px-3 pt-3">
+    {% for message in messages %}
+    <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show shadow-sm" role="alert">
+      {{ message|safe }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% block content %}{% endblock %}
+</main>
+
+<!-- FOOTER -->
+<footer class="ccp-footer">
+  <div class="container-fluid px-3">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span class="text-muted small">
+        <i class="bi bi-c-circle me-1"></i>2026 Melcom Group &mdash; Cost Control Portal
+      </span>
+      <span class="text-muted small d-none d-md-inline">
+        <i class="bi bi-shield-check text-success me-1"></i>Secure &bull;
+        <i class="bi bi-phone ms-1 me-1"></i>Mobile Ready &bull;
+        <i class="bi bi-wifi ms-1 me-1"></i>PWA Enabled
+      </span>
+    </div>
+  </div>
+</footer>
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- PWA Service Worker Registration -->
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => console.log('SW registered:', reg.scope))
+      .catch(err => console.log('SW failed:', err));
+  });
+}
+</script>
+
+{% block extra_js %}{% endblock %}
+</body>
+</html>

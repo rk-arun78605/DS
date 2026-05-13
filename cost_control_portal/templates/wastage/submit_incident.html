@@ -1,0 +1,953 @@
+{% extends 'wastage/base.html' %}
+{% block title %}Submit Wastage Incident — Cost Control Portal{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="container-fluid px-3">
+    <h1><i class="bi bi-plus-circle me-2"></i>{% if edit_mode %}Edit Draft Incident{% else %}Submit Wastage Incident{% endif %}</h1>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb mb-0">
+        <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+        <li class="breadcrumb-item active">{% if edit_mode %}Edit Draft{% else %}Submit Incident{% endif %}</li>
+      </ol>
+    </nav>
+  </div>
+</div>
+
+<div class="container-fluid px-3 pt-3">
+
+  {% if errors %}
+  <div class="alert alert-danger animate-fade-up">
+    <strong><i class="bi bi-exclamation-triangle me-2"></i>Please fix the following errors:</strong>
+    <ul class="mb-0 mt-2">
+      {% for err in errors %}<li>{{ err }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if existing_draft %}
+  <div class="alert alert-warning animate-fade-up d-flex align-items-start gap-3" role="alert">
+    <i class="bi bi-floppy-fill fs-4 mt-1 flex-shrink-0" style="color:#856404"></i>
+    <div class="flex-grow-1">
+      <div class="fw-700">You have a saved draft</div>
+      <div class="mt-1" style="font-size:13px">
+        Saved {{ existing_draft.submit_date|date:"d M Y, H:i" }} &mdash; {{ existing_draft.department }} department.
+        Complete and submit your draft before starting a new incident.
+      </div>
+      <a href="/edit/{{ existing_draft.pk }}/" class="btn btn-warning btn-sm mt-2">
+        <i class="bi bi-pencil me-1"></i>Edit &amp; Submit Draft
+      </a>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Change 10: Geofencing banner -->
+  <div id="geoBanner" class="alert alert-danger d-none animate-fade-up" role="alert">
+    <i class="bi bi-geo-alt-fill me-2"></i>
+    <span id="geoMsg">Checking your location...</span>
+  </div>
+
+  <form method="POST" action="{% if edit_mode %}/edit/{{ draft_incident_no }}/{% else %}/submit/{% endif %}" id="submitForm" enctype="multipart/form-data">
+    {% csrf_token %}
+    {% if edit_mode %}<input type="hidden" name="incident_no" value="{{ draft_incident_no }}" />{% endif %}
+
+    <!-- ══ SECTION 1: Staff & Shop Info ══ -->
+    <div class="form-section animate-fade-up">
+      <div class="form-section-header">
+        <i class="bi bi-person-badge"></i> Staff & Location Details
+        <span class="ms-auto badge bg-secondary" style="font-size:10px">Auto-filled from your profile</span>
+      </div>
+      <div class="form-section-body">
+        <div class="row g-3">
+          <div class="col-12 col-md-6">
+            <label class="form-label"><i class="bi bi-person me-1"></i>Staff Name</label>
+            <input type="text" class="form-control locked-field" value="{{ staff.emp_name }}" readonly />
+          </div>
+          <div class="col-6 col-md-3">
+            <label class="form-label"><i class="bi bi-person-badge me-1"></i>Employee ID</label>
+            <input type="text" class="form-control locked-field" value="{{ staff.emp_id }}" readonly />
+          </div>
+          <div class="col-6 col-md-3">
+            <label class="form-label"><i class="bi bi-calendar me-1"></i>Date</label>
+            <input type="text" class="form-control locked-field" value="{{ today|date:'d M Y' }}" readonly />
+          </div>
+          <div class="col-6 col-md-4">
+            <label class="form-label"><i class="bi bi-shop me-1"></i>Shop Code</label>
+            <input type="text" class="form-control locked-field" value="{{ staff.shop_code }}" readonly />
+          </div>
+          <div class="col-12 col-md-8">
+            <label class="form-label"><i class="bi bi-building me-1"></i>Shop Name</label>
+            <input type="text" class="form-control locked-field" value="{{ staff.shop_name }}" readonly />
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label"><i class="bi bi-layers me-1"></i>Department <span class="text-danger">*</span></label>
+            <select name="department" class="form-select" required id="deptSelect">
+              <option value="">— Select Department —</option>
+              {% for val, label in departments %}
+              <option value="{{ val }}"
+                {% if post.department == val %}selected{% elif edit_mode and draft_items %}{% if draft_items.0.department == val %}selected{% endif %}{% endif %}>
+                {{ label }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ SECTION 2: Items Table ══ -->
+    <div class="form-section animate-fade-up animate-delay-1">
+      <div class="form-section-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-box-seam"></i> Item Details</span>
+        <span class="badge bg-secondary" id="itemCountBadge">1 item</span>
+      </div>
+      <div class="form-section-body p-0">
+        <!-- Hidden count -->
+        <input type="hidden" name="item_count" id="itemCount" value="1" />
+
+        <!-- Table Header (desktop) -->
+        <div class="d-none d-md-block px-3 pt-3 pb-1">
+          <div class="row g-2 align-items-center" style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted)">
+            <div class="col-md-2">Item Name <span class="text-danger">*</span></div>
+            <div class="col-md-1">Item Code</div>
+            <div class="col-md-1">Category</div>
+            <div class="col-md-1">Qty <span class="text-danger">*</span></div>
+            <div class="col-md-1">UOM</div>
+            <div class="col-md-1">Price (GH₵)</div>
+            <div class="col-md-1">Total (GH₵)</div>
+            <div class="col-md-2">Reason <span class="text-danger">*</span></div>
+            <div class="col-md-2">Remarks</div>
+            <div class="col-md-auto" style="width:44px"></div>
+          </div>
+          <hr class="my-1" />
+        </div>
+
+        <!-- Item rows container -->
+        <div id="itemRowsContainer" class="px-3 pb-2"></div>
+
+        <!-- Grand Total -->
+        <div class="px-3 pb-3">
+          <div class="d-flex justify-content-end align-items-center gap-3 mt-2 pt-2 border-top">
+            <span class="fw-700 text-muted">Grand Total Wastage Value:</span>
+            <span id="grandTotal" class="fw-800 fs-5" style="color:var(--melcom-red);min-width:120px;text-align:right">GH₵ 0.00</span>
+          </div>
+        </div>
+
+        <!-- Add Item Button -->
+        <div class="px-3 pb-3">
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="addItemRow()">
+            <i class="bi bi-plus-circle me-2"></i>Add Another Item
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ SECTION 3: Photo / Video Evidence ══ -->
+    <div class="form-section animate-fade-up animate-delay-2">
+      <div class="form-section-header d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-camera"></i> Photo / Video Evidence</span>
+        <span class="badge bg-danger" style="font-size:10px">Photo Required</span>
+      </div>
+      <div class="form-section-body">
+
+        <p class="text-muted mb-3" style="font-size:13px">
+          Attach a photo of the wastage item (required). You may also add a short video as additional evidence.
+          Photos are automatically checked for duplicates.
+        </p>
+
+        <!-- Duplicate Alert -->
+        <div id="photoDuplicateAlert" class="d-none mb-3 p-3 rounded border border-danger"
+             style="background:rgba(220,53,69,.06)">
+          <div class="d-flex align-items-start gap-2">
+            <i class="bi bi-exclamation-triangle-fill text-danger fs-5 mt-1"></i>
+            <div>
+              <div class="fw-700 text-danger">Duplicate Photo Detected!</div>
+              <div id="photoDuplicateDetails" class="mt-1" style="font-size:13px"></div>
+              <div class="mt-2 text-muted" style="font-size:12px">
+                Please select a different, original photo before submitting.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-3">
+
+          <!-- ── Photo (required) ── -->
+          <div class="col-12 col-md-6">
+            <div class="d-flex align-items-center justify-content-between mb-1">
+              <label class="form-label mb-0">
+                <i class="bi bi-image me-1"></i>Photo <span class="text-danger">*</span>
+                <span id="photoStatusBadge" class="ms-1"></span>
+              </label>
+              <label for="submitPhotoInput" id="photoChangeLbl"
+                     class="text-primary d-none" style="font-size:12px;cursor:pointer;text-decoration:underline">
+                Change
+              </label>
+            </div>
+
+            <input type="file" name="photo" id="submitPhotoInput" accept="image/*,.pdf,application/pdf"
+                   class="d-none" onchange="checkPhoto(this)" />
+
+            <div class="upload-zone" id="submitPhotoZone"
+                 onclick="document.getElementById('submitPhotoInput').click()"
+                 style="cursor:pointer">
+              <div id="submitPhotoZoneContent">
+                <div class="upload-icon"><i class="bi bi-image" id="photoIcon"></i></div>
+                <div class="fw-600" style="font-size:13px" id="photoLabel">Click to select photo or PDF</div>
+                <div class="text-muted" style="font-size:11px">JPG, PNG, WEBP, PDF (max 20MB)</div>
+              </div>
+              <div id="submitPhotoProgress" class="d-none text-center py-2">
+                <div class="spinner-border spinner-border-sm text-primary me-2"></div>
+                <span style="font-size:13px">Checking for duplicates…</span>
+              </div>
+              <div id="submitPhotoPreview" class="mt-2"></div>
+            </div>
+          </div>
+
+          <!-- ── Short Video (optional) ── -->
+          <div class="col-12 col-md-6">
+            <div class="d-flex align-items-center justify-content-between mb-1">
+              <label class="form-label mb-0">
+                <i class="bi bi-camera-video me-1"></i>Short Video
+                <span class="badge bg-secondary ms-1" style="font-size:9px">Optional</span>
+              </label>
+              <label for="submitVideoInput" id="videoChangeLbl"
+                     class="text-primary d-none" style="font-size:12px;cursor:pointer;text-decoration:underline">
+                Change
+              </label>
+            </div>
+
+            <input type="file" name="video" id="submitVideoInput"
+                   accept="video/mp4,video/quicktime,video/x-msvideo,video/webm,.mp4,.mov,.avi,.webm"
+                   class="d-none" onchange="handleVideoSelect(this)" />
+
+            <div class="upload-zone" id="submitVideoZone"
+                 onclick="document.getElementById('submitVideoInput').click()"
+                 style="cursor:pointer">
+              <div id="submitVideoZoneContent">
+                <div class="upload-icon"><i class="bi bi-camera-video" id="videoIcon"></i></div>
+                <div class="fw-600" style="font-size:13px" id="videoLabel">Click to select video</div>
+                <div class="text-muted" style="font-size:11px">MP4, MOV, AVI, WEBM (max 50MB)</div>
+              </div>
+              <div id="submitVideoPreview" class="mt-2"></div>
+            </div>
+
+            <div id="videoSizeWarning" class="d-none mt-1 text-danger" style="font-size:12px;">
+              <i class="bi bi-exclamation-circle me-1"></i>Video exceeds 50 MB — please trim it before uploading.
+            </div>
+          </div>
+
+        </div><!-- /row -->
+      </div>
+    </div>
+
+    <!-- ══ SECTION: PDF Evidence (shown when no per-item photos) ══ -->
+    <div class="form-section animate-fade-up" id="pdfSection" style="display:none;">
+      <div class="form-section-header">
+        <i class="bi bi-file-earmark-pdf text-danger"></i> PDF Evidence
+        <span class="ms-2 badge bg-danger">Required when no item photos uploaded</span>
+      </div>
+      <div class="form-section-body">
+        <div class="alert alert-info mb-3 py-2" style="font-size:13px;">
+          <i class="bi bi-info-circle me-1"></i>
+          Upload a single PDF where <strong>each page = one item</strong>.
+          The number of pages must exactly match the number of items added.
+          Pages must all be unique — no duplicate or reused images.
+        </div>
+
+        <!-- PDF duplicate alert -->
+        <div id="pdfDuplicateAlert" class="d-none mb-3 p-3 rounded border border-danger"
+             style="background:rgba(220,53,69,.06);font-size:13px;">
+          <i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>
+          <span id="pdfDuplicateMsg"></span>
+        </div>
+
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+          <div>
+            <label class="form-label mb-1 small fw-600">
+              <i class="bi bi-file-pdf me-1"></i>Upload PDF
+            </label>
+            <input type="file" class="form-control" name="incident_pdf" id="incidentPdfInput"
+                   accept="application/pdf,.pdf" style="max-width:340px;"
+                   onchange="onPdfSelected(this)" />
+          </div>
+          <div id="pdfStatusBadge" class="mt-3"></div>
+        </div>
+        <div class="text-muted mt-2" style="font-size:11px;">
+          <i class="bi bi-shield-check text-success me-1"></i>
+          Each page will be checked against previously uploaded evidence for duplicates.
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ SUBMIT / DRAFT ══ -->
+    <div class="d-flex justify-content-between align-items-center gap-3 mb-4 animate-fade-up animate-delay-3">
+      <a href="/" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-2"></i>Cancel
+      </a>
+      <div class="d-flex gap-2">
+        <!-- Change 8: Save Draft button -->
+        <button type="submit" name="action" value="draft" class="btn btn-outline-secondary px-4 py-2" id="draftBtn">
+          <i class="bi bi-floppy me-2"></i>Save Draft
+        </button>
+        <button type="submit" name="action" value="submit" class="btn btn-melcom px-5 py-2" id="submitBtn">
+          <i class="bi bi-send me-2"></i>Submit Incident
+        </button>
+      </div>
+    </div>
+
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ── Reason choices from Django context ───────────────────────────────────────
+const REASON_CHOICES = [
+  {% for val, label in reasons %}
+  { value: "{{ val }}", label: "{{ label }}" },
+  {% endfor %}
+];
+
+// ── Photo duplicate pre-check ─────────────────────────────────────────────────
+let photoBlocked = false;
+
+function checkPhoto(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const zone     = document.getElementById('submitPhotoZone');
+  const progress = document.getElementById('submitPhotoProgress');
+  const content  = document.getElementById('submitPhotoZoneContent');
+  const preview  = document.getElementById('submitPhotoPreview');
+  const badge    = document.getElementById('photoStatusBadge');
+  const changeLbl = document.getElementById('photoChangeLbl');
+  const dupAlert  = document.getElementById('photoDuplicateAlert');
+  const isPdf    = file.name.toLowerCase().endsWith('.pdf');
+
+  preview.innerHTML = '';
+  if (isPdf) {
+    preview.innerHTML = `
+      <div class="mt-2 p-2 border rounded d-flex align-items-center gap-2" style="background:#fff8f8">
+        <i class="bi bi-file-pdf-fill text-danger fs-4"></i>
+        <div>
+          <div class="fw-600" style="font-size:13px">${file.name}</div>
+          <div class="text-muted" style="font-size:11px">${(file.size/1024).toFixed(1)} KB</div>
+        </div>
+      </div>`;
+  } else {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      preview.innerHTML = `<img src="${e.target.result}"
+        style="max-height:90px;max-width:100%;border-radius:6px;margin-top:.5rem;object-fit:cover" />`;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  content.classList.add('d-none');
+  progress.classList.remove('d-none');
+  zone.style.borderColor = 'var(--melcom-red)';
+  zone.style.background  = 'rgba(227,24,55,.04)';
+  dupAlert.classList.add('d-none');
+  photoBlocked = false;
+
+  const fd = new FormData();
+  fd.append('photo', file);
+  fd.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+
+  fetch('/submit/check-photo/', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      progress.classList.add('d-none');
+      content.classList.remove('d-none');
+
+      if (data.duplicate) {
+        photoBlocked = true;
+        zone.style.borderColor = '#dc3545';
+        zone.style.background  = 'rgba(220,53,69,.05)';
+        content.innerHTML = `
+          <div class="upload-icon"><i class="bi bi-exclamation-triangle-fill text-danger"></i></div>
+          <div class="fw-700 text-danger" style="font-size:13px">Duplicate detected — select a different photo</div>
+          <div class="text-muted" style="font-size:11px">JPG, PNG, WEBP (max 20MB)</div>`;
+        preview.innerHTML = '';
+        dupAlert.classList.remove('d-none');
+        document.getElementById('photoDuplicateDetails').innerHTML = `
+          <div class="d-flex align-items-start gap-2 mt-1">
+            <i class="bi bi-exclamation-circle text-danger mt-1"></i>
+            <div>
+              <strong>${data.layer}</strong><br>
+              <span class="text-muted" style="font-size:12px">
+                Originally uploaded for incident
+                <strong>${data.original_incident}</strong> on ${data.uploaded_at}
+              </span>
+            </div>
+          </div>`;
+        input.value = '';
+        badge.className = '';
+        badge.textContent = '';
+        changeLbl.classList.add('d-none');
+      } else {
+        photoBlocked = false;
+        zone.style.borderColor = 'var(--melcom-green)';
+        zone.style.background  = 'rgba(39,174,96,.07)';
+        content.innerHTML = `
+          <div class="upload-icon"><i class="bi bi-check-circle-fill text-success"></i></div>
+          <div class="fw-600 text-success" style="font-size:13px">${isPdf ? 'PDF' : 'Photo'} ready — click to change</div>
+          <div class="text-muted" style="font-size:11px">JPG, PNG, WEBP, PDF (max 20MB)</div>`;
+        badge.className   = 'ms-1 badge bg-success';
+        badge.textContent = 'Ready';
+        changeLbl.classList.remove('d-none');
+      }
+    })
+    .catch(() => {
+      progress.classList.add('d-none');
+      content.classList.remove('d-none');
+      zone.style.borderColor = '';
+      zone.style.background  = '';
+      content.innerHTML = `
+        <div class="upload-icon"><i class="bi bi-wifi-off text-warning"></i></div>
+        <div class="fw-600 text-warning" style="font-size:13px">Could not check for duplicates — file will be verified on submit</div>
+        <div class="text-muted" style="font-size:11px">JPG, PNG, WEBP, PDF (max 20MB)</div>`;
+      badge.className   = 'ms-1 badge bg-warning text-dark';
+      badge.textContent = 'Unverified';
+      changeLbl.classList.remove('d-none');
+      photoBlocked = false;
+    });
+}
+
+// ── Video upload handler ────────────────────────────────────────────────────
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024; // 50 MB
+
+function handleVideoSelect(input) {
+  const file    = input.files[0];
+  const zone    = document.getElementById('submitVideoZone');
+  const content = document.getElementById('submitVideoZoneContent');
+  const preview = document.getElementById('submitVideoPreview');
+  const changeLbl = document.getElementById('videoChangeLbl');
+  const warning   = document.getElementById('videoSizeWarning');
+
+  warning.classList.add('d-none');
+  preview.innerHTML = '';
+
+  if (!file) return;
+
+  if (file.size > MAX_VIDEO_BYTES) {
+    warning.classList.remove('d-none');
+    input.value = '';
+    return;
+  }
+
+  // Show file info
+  const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+  content.innerHTML = `
+    <div class="upload-icon"><i class="bi bi-camera-video-fill text-success"></i></div>
+    <div class="fw-600 text-success" style="font-size:13px">${file.name}</div>
+    <div class="text-muted" style="font-size:11px">${sizeMB} MB · ready to upload</div>
+  `;
+  zone.style.borderColor = 'var(--bs-success)';
+  changeLbl.classList.remove('d-none');
+}
+
+// Drag & drop for photo zone
+(function() {
+  const zone = document.getElementById('submitPhotoZone');
+  if (!zone) return;
+  zone.addEventListener('dragover',  (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', ()  => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const files = e.dataTransfer.files;
+    if (!files[0]) return;
+    const input = document.getElementById('submitPhotoInput');
+    const dt = new DataTransfer();
+    dt.items.add(files[0]);
+    input.files = dt.files;
+    checkPhoto(input);
+  });
+})();
+
+
+let rowIndex = 0;  // monotonically increasing, never reused
+
+// Change 1: per-item reason dropdown + Change 4: expiry date/photo
+function buildRow(idx, prefill) {
+  prefill = prefill || {};
+  const reasonOptions = REASON_CHOICES.map(r =>
+    `<option value="${r.value}" ${prefill.reason === r.value ? 'selected' : ''}>${r.label}</option>`
+  ).join('');
+
+  const isExpired = prefill.reason === 'Expired';
+
+  return `
+  <div class="item-row border rounded p-2 mb-2 animate-fade-up" id="row_${idx}" data-idx="${idx}">
+    <div class="row g-2 align-items-start">
+
+      <!-- Item Name + autocomplete -->
+      <div class="col-12 col-md-2 position-relative">
+        <label class="form-label d-md-none" style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted)">Item Name *</label>
+        <input type="text" class="form-control item-name-input" id="name_${idx}"
+               name="item_name_${idx}" placeholder="Search item…" autocomplete="off" required
+               value="${prefill.item_name || ''}" />
+        <div class="autocomplete-results d-none" id="ac_${idx}"></div>
+      </div>
+
+      <!-- Item Code -->
+      <div class="col-6 col-md-1">
+        <label class="form-label d-md-none" style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted)">Item Code</label>
+        <input type="text" class="form-control readonly-field item-code-display" id="code_${idx}"
+               placeholder="—" readonly value="${prefill.item_code || ''}" />
+        <input type="hidden" class="item-code-hidden" name="item_code_${idx}" id="code_h_${idx}"
+               value="${prefill.item_code || 'AAAAA'}" />
+      </div>
+
+      <!-- Category -->
+      <div class="col-6 col-md-1">
+        <label class="form-label d-md-none" style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted)">Category</label>
+        <input type="text" class="form-control readonly-field item-cat-display" id="cat_${idx}"
+               placeholder="—" readonly value="${prefill.category || ''}" />
+        <input type="hidden" class="item-cat-hidden" name="category_${idx}" id="cat_h_${idx}"
+               value="${prefill.category || ''}" />
+      </div>
+
+      <!-- Quantity -->
+      <div class="col-6 col-md-1">
+        <label class="form-label d-md-none" style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted)">Qty *</label>
+        <input type="number" class="form-control item-qty" id="qty_${idx}"
+               name="quantity_${idx}" placeholder="0" step="0.001" min="0.001" required
+               value="${prefill.quantity || ''}"
+               oninput="calcRowTotal(${idx})" />
+      </div>
+
+      <!-- UOM -->
+      <div class="col-6 col-md-1">
+        <label class="form-label d-md-none" style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted)">UOM</label>
+        <input type="text" class="form-control readonly-field item-uom" id="uom_${idx}"
+               placeholder="—" readonly value="${prefill.uom || ''}" />
+        <input type="hidden" name="uom_${idx}" id="uom_h_${idx}" value="${prefill.uom || ''}" />
+      </div>
+
+      <!-- Selling Price -->
+      <div class="col-6 col-md-1">
+        <label class="form-label d-md-none" style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted)">Price</label>
+        <input type="text" class="form-control readonly-field item-price" id="price_${idx}"
+               placeholder="0.00" readonly value="${prefill.selling_price ? parseFloat(prefill.selling_price).toFixed(2) : ''}" />
+        <input type="hidden" class="item-price-hidden" name="selling_price_${idx}" id="price_h_${idx}"
+               value="${prefill.selling_price || '0'}" />
+      </div>
+
+      <!-- Total Value -->
+      <div class="col-6 col-md-1">
+        <label class="form-label d-md-none" style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted)">Total Value</label>
+        <input type="text" class="form-control fw-700 item-total" id="total_${idx}"
+               style="background:#fff8e1;border-color:var(--melcom-gold)" placeholder="0.00" readonly />
+      </div>
+
+      <!-- Change 1: Per-item Reason dropdown -->
+      <div class="col-12 col-md-2">
+        <label class="form-label d-md-none" style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted)">Reason *</label>
+        <select class="form-select item-reason" name="reason_${idx}" id="reason_${idx}"
+                required onchange="handleRowReasonChange(${idx})">
+          <option value="">— Reason —</option>
+          ${reasonOptions}
+        </select>
+        <!-- Change 4: Expiry fields (shown when reason = Expired) -->
+        <div id="expiry_fields_${idx}" class="${isExpired ? '' : 'd-none'} mt-2">
+          <input type="date" class="form-control form-control-sm mb-1"
+                 name="expiry_date_${idx}" id="expiry_date_${idx}"
+                 placeholder="Expiry Date" title="Expiry Date"
+                 value="${prefill.expiry_date || ''}" />
+          <input type="file" class="form-control form-control-sm"
+                 name="expiry_photo_${idx}" id="expiry_photo_${idx}"
+                 accept="image/*,.pdf,application/pdf" title="Expiry Photo / PDF (optional)" />
+          <div class="text-muted" style="font-size:10px;margin-top:2px">Expiry date &amp; photo or PDF</div>
+        </div>
+      </div>
+
+      <!-- Per-item Remarks -->
+      <div class="col-12 col-md-2">
+        <label class="form-label d-md-none" style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted)">Remarks</label>
+        <textarea class="form-control form-control-sm" name="remarks_${idx}" id="remarks_${idx}"
+                  rows="2" placeholder="Notes…">${prefill.remarks || ''}</textarea>
+        <div id="remarks_mandatory_${idx}" class="text-danger d-none" style="font-size:10px">Required for "Others"</div>
+      </div>
+
+      <!-- Delete button -->
+      <div class="col-auto" style="padding-top:24px">
+        <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeRow(${idx})"
+                id="del_${idx}" title="Remove row">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Per-item evidence photo -->
+    <div class="row g-2 mt-1 px-1">
+      <div class="col-12">
+        <div class="d-flex align-items-center gap-2 p-2 rounded" style="background:rgba(0,0,0,.04);border:1px dashed #dee2e6;">
+          <i class="bi bi-camera text-muted"></i>
+          <label class="form-label mb-0 small text-muted" style="white-space:nowrap;">
+            Item Evidence Photo <span class="text-muted">(optional — or upload PDF below)</span>
+          </label>
+          <input type="file" class="form-control form-control-sm item-photo-input ms-2"
+                 name="item_photo_${idx}" id="item_photo_${idx}"
+                 accept="image/*" style="max-width:260px;"
+                 onchange="onItemPhotoChange()" />
+          <span id="item_photo_preview_${idx}" class="ms-1" style="font-size:12px;color:#198754;"></span>
+        </div>
+      </div>
+    </div>
+
+  </div>`;
+}
+
+function addItemRow(prefill) {
+  rowIndex++;
+  // After inserting row, recheck photo section
+  setTimeout(onItemPhotoChange, 50);
+  const container = document.getElementById('itemRowsContainer');
+  container.insertAdjacentHTML('beforeend', buildRow(rowIndex, prefill));
+  attachAutocomplete(rowIndex);
+  updateItemCount();
+  updateDeleteButtons();
+  if (prefill && prefill.quantity) calcRowTotal(rowIndex);
+  document.getElementById(`name_${rowIndex}`)?.focus();
+}
+
+function removeRow(idx) {
+  const row = document.getElementById(`row_${idx}`);
+  if (row) row.remove();
+  updateItemCount();
+  updateDeleteButtons();
+  calcGrandTotal();
+  onItemPhotoChange();   // recheck PDF section after row removed
+}
+
+// ── Per-item photo & PDF section logic ─────────────────────────────────────────
+function onItemPhotoChange() {
+  const inputs  = document.querySelectorAll('.item-photo-input');
+  const withPhoto    = Array.from(inputs).filter(i => i.files.length > 0);
+  const withoutPhoto = Array.from(inputs).filter(i => i.files.length === 0);
+  const pdfSection   = document.getElementById('pdfSection');
+
+  // Update preview labels
+  inputs.forEach(inp => {
+    const preview = document.getElementById(inp.id.replace('item_photo_', 'item_photo_preview_'));
+    if (preview) preview.textContent = inp.files.length ? '✓ ' + inp.files[0].name : '';
+  });
+
+  if (inputs.length === 0) { pdfSection.style.display = 'none'; return; }
+
+  if (withPhoto.length === inputs.length) {
+    // All items have photos — hide PDF section
+    pdfSection.style.display = 'none';
+    clearPdfInput();
+  } else if (withPhoto.length === 0) {
+    // No item has a photo — show PDF section
+    pdfSection.style.display = 'block';
+  } else {
+    // Mixed — show PDF section with warning
+    pdfSection.style.display = 'block';
+    showPdfAlert(
+      `You have uploaded photos for ${withPhoto.length} of ${inputs.length} items. ` +
+      `Please upload a photo for EVERY item, or remove all item photos and upload a PDF instead.`
+    );
+  }
+}
+
+function clearPdfInput() {
+  const pdfInput = document.getElementById('incidentPdfInput');
+  if (pdfInput) pdfInput.value = '';
+  document.getElementById('pdfStatusBadge').innerHTML = '';
+  hidePdfAlert();
+}
+
+function showPdfAlert(msg) {
+  const el = document.getElementById('pdfDuplicateAlert');
+  document.getElementById('pdfDuplicateMsg').textContent = msg;
+  el.classList.remove('d-none');
+}
+
+function hidePdfAlert() {
+  document.getElementById('pdfDuplicateAlert').classList.add('d-none');
+}
+
+function onPdfSelected(input) {
+  const badge = document.getElementById('pdfStatusBadge');
+  hidePdfAlert();
+  if (!input.files.length) { badge.innerHTML = ''; return; }
+
+  const file     = input.files[0];
+  const itemRows = document.querySelectorAll('.item-row').length;
+  badge.innerHTML = `<span class="badge bg-secondary">${file.name} selected — ${itemRows} item${itemRows !== 1 ? 's' : ''} → ${itemRows} page${itemRows !== 1 ? 's' : ''} expected</span>`;
+}
+
+function updateItemCount() {
+  const rows = document.querySelectorAll('.item-row');
+  const count = rows.length;
+  document.getElementById('itemCount').value = count;
+  document.getElementById('itemCountBadge').textContent = count === 1 ? '1 item' : `${count} items`;
+}
+
+function updateDeleteButtons() {
+  const rows = document.querySelectorAll('.item-row');
+  rows.forEach(row => {
+    const idx = row.dataset.idx;
+    const btn = document.getElementById(`del_${idx}`);
+    if (btn) btn.disabled = rows.length === 1;
+  });
+}
+
+// Change 4: show/hide expiry fields when reason = Expired
+function handleRowReasonChange(idx) {
+  const reason = document.getElementById(`reason_${idx}`)?.value;
+  const expiryFields = document.getElementById(`expiry_fields_${idx}`);
+  const remarksMandatory = document.getElementById(`remarks_mandatory_${idx}`);
+  if (expiryFields) {
+    if (reason === 'Expired') {
+      expiryFields.classList.remove('d-none');
+    } else {
+      expiryFields.classList.add('d-none');
+    }
+  }
+  if (remarksMandatory) {
+    if (reason === 'Others') {
+      remarksMandatory.classList.remove('d-none');
+    } else {
+      remarksMandatory.classList.add('d-none');
+    }
+  }
+}
+
+// ── Autocomplete per row ───────────────────────────────────────────────────────
+
+function attachAutocomplete(idx) {
+  let timer;
+  const input = document.getElementById(`name_${idx}`);
+  if (!input) return;
+  input.addEventListener('input', function () {
+    clearTimeout(timer);
+    const q = this.value.trim();
+    if (q.length < 2) { closeAC(idx); return; }
+    timer = setTimeout(() => fetchItemsForRow(q, idx), 250);
+  });
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeAC(idx);
+  });
+}
+
+function fetchItemsForRow(q, idx) {
+  fetch(`/api/item-search/?q=${encodeURIComponent(q)}`)
+    .then(r => r.json())
+    .then(data => renderAC(data.items, idx));
+}
+
+function renderAC(items, idx) {
+  const box = document.getElementById(`ac_${idx}`);
+  if (!box) return;
+  if (!items.length) { closeAC(idx); return; }
+  box.innerHTML = items.map(item => `
+    <div class="autocomplete-item"
+         onclick='selectItemForRow(${JSON.stringify(item).replace(/'/g,"&#39;")}, ${idx})'>
+      <div>
+        <div style="font-size:14px;font-weight:600">${item.item_name}</div>
+        <span class="item-code">${item.item_code}</span>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <span class="item-cat cat-${item.category}">${item.category}</span>
+        <small class="text-muted">GH₵${parseFloat(item.selling_price).toFixed(2)}</small>
+      </div>
+    </div>`).join('');
+  box.classList.remove('d-none');
+}
+
+function selectItemForRow(item, idx) {
+  document.getElementById(`name_${idx}`).value     = item.item_name;
+  document.getElementById(`code_${idx}`).value     = item.item_code;
+  document.getElementById(`code_h_${idx}`).value   = item.item_code;
+  document.getElementById(`cat_${idx}`).value      = item.category;
+  document.getElementById(`cat_h_${idx}`).value    = item.category;
+  document.getElementById(`uom_${idx}`).value      = item.uom || '';
+  document.getElementById(`uom_h_${idx}`).value    = item.uom || '';
+  document.getElementById(`price_${idx}`).value    = parseFloat(item.selling_price).toFixed(2);
+  document.getElementById(`price_h_${idx}`).value  = item.selling_price;
+  closeAC(idx);
+  calcRowTotal(idx);
+}
+
+function closeAC(idx) {
+  document.getElementById(`ac_${idx}`)?.classList.add('d-none');
+}
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.item-name-input') && !e.target.closest('.autocomplete-results')) {
+    document.querySelectorAll('.autocomplete-results').forEach(b => b.classList.add('d-none'));
+  }
+});
+
+// ── Total Calculation ──────────────────────────────────────────────────────────
+
+function calcRowTotal(idx) {
+  const qty   = parseFloat(document.getElementById(`qty_${idx}`)?.value) || 0;
+  const price = parseFloat(document.getElementById(`price_h_${idx}`)?.value) || 0;
+  const total = (qty * price).toFixed(2);
+  const el = document.getElementById(`total_${idx}`);
+  if (el) el.value = total;
+  calcGrandTotal();
+}
+
+function calcGrandTotal() {
+  let grand = 0;
+  document.querySelectorAll('.item-total').forEach(el => {
+    grand += parseFloat(el.value) || 0;
+  });
+  document.getElementById('grandTotal').textContent = 'GH₵ ' + grand.toFixed(2);
+}
+
+// ── Change 5: Client-side duplicate item+reason check ────────────────────────
+
+function checkDuplicateItemReasons() {
+  const rows = document.querySelectorAll('.item-row');
+  const seen = {};
+  for (const row of rows) {
+    const idx = row.dataset.idx;
+    const itemCode = document.getElementById(`code_h_${idx}`)?.value || '';
+    const itemName = document.getElementById(`name_${idx}`)?.value?.trim() || '';
+    const reason = document.getElementById(`reason_${idx}`)?.value || '';
+    if (!itemCode || itemCode === 'AAAAA' || !reason) continue;
+    const key = `${itemCode}||${reason}`;
+    if (seen[key]) {
+      return `Item "${itemName}" with reason "${reason}" is already added to this incident.`;
+    }
+    seen[key] = true;
+  }
+  return null;
+}
+
+// ── Form Submit ────────────────────────────────────────────────────────────────
+
+document.getElementById('submitForm').addEventListener('submit', function(e) {
+  const actionVal = e.submitter ? e.submitter.value : 'submit';
+
+  updateItemCount();
+
+  if (photoBlocked) {
+    const photoInput = document.getElementById('submitPhotoInput');
+    if (photoInput) photoInput.value = '';
+  }
+
+  // Only validate duplicates on real submit (not draft)
+  if (actionVal !== 'draft') {
+    const dupError = checkDuplicateItemReasons();
+    if (dupError) {
+      e.preventDefault();
+      // Show inline error
+      let errDiv = document.getElementById('clientDupError');
+      if (!errDiv) {
+        errDiv = document.createElement('div');
+        errDiv.id = 'clientDupError';
+        errDiv.className = 'alert alert-danger mt-2';
+        document.getElementById('itemRowsContainer').insertAdjacentElement('afterend', errDiv);
+      }
+      errDiv.textContent = dupError;
+      errDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+  }
+
+  // Remove any previous client-side dup error
+  document.getElementById('clientDupError')?.remove();
+
+  const btn = e.submitter;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>'
+      + (actionVal === 'draft' ? 'Saving...' : 'Submitting...');
+  }
+});
+
+// ── Change 10: Geofencing ─────────────────────────────────────────────────────
+
+let geoAllowed = true;  // default allow; updated after check
+
+function checkGeoLocation() {
+  if (!navigator.geolocation) return;  // Not supported — allow
+
+  navigator.geolocation.getCurrentPosition(
+    function(pos) {
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+
+      const fd = new FormData();
+      fd.append('lat', lat);
+      fd.append('lon', lon);
+      fd.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+
+      fetch('/check-location/', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+          geoAllowed = data.allowed;
+          if (!data.allowed) {
+            const banner = document.getElementById('geoBanner');
+            banner.classList.remove('d-none');
+            document.getElementById('geoMsg').textContent = data.message;
+            // Disable Submit but NOT Draft
+            const submitBtn = document.getElementById('submitBtn');
+            if (submitBtn) {
+              submitBtn.disabled = true;
+              submitBtn.title = 'Submission disabled — you are not at your assigned shop location.';
+            }
+          }
+        })
+        .catch(() => {});  // Network error — fail open
+    },
+    function() {
+      // Geolocation denied/unavailable — allow submission
+    },
+    { timeout: 10000 }
+  );
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', () => {
+  const container = document.getElementById('itemRowsContainer');
+
+  {% if edit_mode and draft_items %}
+  // Pre-fill rows from draft
+  const draftItems = [
+    {% for item in draft_items %}
+    {
+      item_name: "{{ item.item_name|escapejs }}",
+      item_code: "{{ item.item_code|escapejs }}",
+      category: "{{ item.category|escapejs }}",
+      quantity: "{{ item.quantity }}",
+      uom: "{{ item.uom|default:''|escapejs }}",
+      selling_price: "{{ item.selling_price }}",
+      reason: "{{ item.reason|escapejs }}",
+      remarks: "{{ item.remarks|default:''|escapejs }}",
+      expiry_date: "{{ item.expiry_date|default:'' }}",
+    },
+    {% endfor %}
+  ];
+  draftItems.forEach((prefill, i) => {
+    container.insertAdjacentHTML('beforeend', buildRow(i, prefill));
+    attachAutocomplete(i);
+    if (prefill.quantity) calcRowTotal(i);
+    rowIndex = i;
+  });
+  {% else %}
+  // First row
+  container.insertAdjacentHTML('beforeend', buildRow(0));
+  attachAutocomplete(0);
+  {% endif %}
+
+  updateItemCount();
+  updateDeleteButtons();
+
+  // Change 10: start geolocation check
+  checkGeoLocation();
+});
+</script>
+{% endblock %}

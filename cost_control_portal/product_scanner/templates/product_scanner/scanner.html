@@ -1,0 +1,633 @@
+{% extends "wastage/base.html" %}
+{% block title %}AI Product Scanner — Melcom{% endblock %}
+
+{% block extra_css %}
+<style>
+:root{
+  --sc-bg:#060d1a;--sc-surface:#0a1628;--sc-border:#1e3a5f;
+  --sc-accent:#38bdf8;--sc-green:#22c55e;--sc-yellow:#f59e0b;
+  --sc-red:#ef4444;--sc-purple:#8b5cf6;--sc-text:#e2e8f0;--sc-muted:#64748b;--sc-card:#111827;
+}
+.sc-wrap{background:var(--sc-bg);min-height:calc(100vh - 120px);padding:16px 20px 30px;color:var(--sc-text);font-family:'Segoe UI',Arial,sans-serif}
+
+/* ── Page header strip ── */
+.sc-page-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+.sc-page-title{font-size:17px;font-weight:900;color:var(--sc-accent)}
+.sc-page-sub{font-size:10px;color:var(--sc-muted);margin-top:2px}
+.ai-badge{display:inline-flex;align-items:center;gap:5px;background:rgba(139,92,246,.15);
+  border:1px solid var(--sc-purple);border-radius:20px;padding:4px 11px;font-size:11px;font-weight:700;color:var(--sc-purple)}
+
+/* ── Sub-tabs ── */
+.tab-bar{display:flex;border-bottom:2px solid var(--sc-border);margin-bottom:16px}
+.tab-btn{padding:9px 20px;font-size:12px;font-weight:700;color:var(--sc-muted);background:none;border:none;
+  cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s}
+.tab-btn.active{color:var(--sc-accent);border-bottom-color:var(--sc-accent)}
+.tab-btn:hover:not(.active){color:var(--sc-text)}
+.tab-pane{display:none}.tab-pane.active{display:block}
+
+/* ── Camera ── */
+.cam-panel{background:var(--sc-surface);border:1px solid var(--sc-border);border-radius:14px;overflow:hidden}
+.panel-hdr{background:var(--sc-card);padding:9px 14px;border-bottom:1px solid var(--sc-border);
+  font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:1px}
+.camera-wrap{position:relative;background:#000;aspect-ratio:4/3}
+#video{width:100%;height:100%;object-fit:cover;display:block}
+.scan-overlay{position:absolute;inset:0;pointer-events:none}
+.corner{position:absolute;width:30px;height:30px;border-color:var(--sc-accent);border-style:solid;opacity:.85}
+.corner.tl{top:28px;left:28px;border-width:3px 0 0 3px;border-radius:4px 0 0 0}
+.corner.tr{top:28px;right:28px;border-width:3px 3px 0 0;border-radius:0 4px 0 0}
+.corner.bl{bottom:28px;left:28px;border-width:0 0 3px 3px;border-radius:0 0 0 4px}
+.corner.br{bottom:28px;right:28px;border-width:0 3px 3px 0;border-radius:0 0 4px 0}
+.scan-line{position:absolute;left:28px;right:28px;height:2px;
+  background:linear-gradient(90deg,transparent,var(--sc-accent),transparent);
+  animation:scanMove 2.2s ease-in-out infinite;display:none}
+.scan-line.active{display:block}
+@keyframes scanMove{0%{top:28px;opacity:1}90%{top:calc(100% - 28px);opacity:1}100%{top:calc(100% - 28px);opacity:0}}
+.cam-status{position:absolute;top:8px;left:50%;transform:translateX(-50%);
+  background:rgba(0,0,0,.75);border:1px solid var(--sc-border);border-radius:20px;
+  padding:3px 12px;font-size:10px;font-weight:700;color:var(--sc-muted);white-space:nowrap;transition:all .3s}
+.cam-status.ready{color:var(--sc-green);border-color:var(--sc-green)}
+.cam-status.scanning{color:var(--sc-accent);border-color:var(--sc-accent)}
+.btn-area{padding:10px 12px;display:flex;gap:8px}
+.sc-btn{flex:1;padding:11px;border:none;border-radius:9px;font-size:13px;font-weight:700;
+  cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px}
+.sc-btn-primary{background:linear-gradient(135deg,#1d4ed8,#2563eb);color:#fff;box-shadow:0 4px 12px rgba(37,99,235,.3)}
+.sc-btn-primary:hover{opacity:.88;transform:translateY(-1px)}
+.sc-btn-primary:disabled{background:#1e293b;color:var(--sc-muted);cursor:not-allowed;transform:none;box-shadow:none}
+.sc-btn-outline{background:#1e293b;color:var(--sc-accent);border:1px solid var(--sc-border);flex:0 0 auto;padding:11px 14px}
+.sc-btn-outline:hover{background:#0f2040}
+
+/* ── Permission screen ── */
+.perm-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:36px 20px;text-align:center;min-height:220px}
+.perm-icon{font-size:44px;margin-bottom:10px}
+.perm-title{font-size:14px;font-weight:700;margin-bottom:5px}
+.perm-sub{font-size:11px;color:var(--sc-muted);margin-bottom:16px;line-height:1.6}
+.btn-allow{background:linear-gradient(135deg,var(--sc-green),#16a34a);color:#fff;border:none;
+  border-radius:9px;padding:10px 24px;font-size:13px;font-weight:700;cursor:pointer}
+.btn-allow:hover{opacity:.88}
+
+/* ── Upload ── */
+.upload-zone{border:2px dashed var(--sc-border);border-radius:12px;padding:34px 20px;text-align:center;
+  cursor:pointer;transition:all .2s;background:var(--sc-surface);position:relative;margin-bottom:10px}
+.upload-zone:hover,.upload-zone.drag-over{border-color:var(--sc-accent);background:rgba(56,189,248,.05)}
+.upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.upload-icon{font-size:40px;margin-bottom:8px}
+.upload-title{font-size:13px;font-weight:700;color:var(--sc-text);margin-bottom:3px}
+.upload-sub{font-size:10px;color:var(--sc-muted)}
+.preview-wrap{position:relative;margin-bottom:10px;display:none}
+.preview-wrap.visible{display:block}
+#previewImg{width:100%;border-radius:10px;max-height:260px;object-fit:contain;background:#000;border:1px solid var(--sc-border)}
+.preview-clear{position:absolute;top:7px;right:7px;background:rgba(0,0,0,.75);
+  border:1px solid #334155;border-radius:5px;color:#e2e8f0;padding:2px 8px;font-size:11px;cursor:pointer;font-weight:700}
+
+/* ── Spinner ── */
+.spinner{display:none;flex-direction:column;align-items:center;justify-content:center;padding:32px;gap:10px}
+.spinner.active{display:flex}
+.spin-ring{width:42px;height:42px;border:4px solid #1e293b;border-top-color:var(--sc-accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin-text{font-size:12px;color:var(--sc-muted);font-weight:600}
+
+/* ── Product card ── */
+.product-card{background:var(--sc-surface);border:1px solid var(--sc-border);border-radius:14px;overflow:hidden;display:none;margin-bottom:12px}
+.product-card.visible{display:block}
+.card-hero{background:linear-gradient(135deg,#0d1b35,#111827);border-bottom:1px solid var(--sc-border);
+  padding:14px 16px;display:flex;align-items:center;gap:12px}
+.cat-icon{width:48px;height:48px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+  font-size:22px;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.25);flex-shrink:0}
+.card-name{font-size:15px;font-weight:900;color:var(--sc-text);line-height:1.3}
+.card-brand{font-size:11px;color:var(--sc-accent);font-weight:700;margin-top:2px}
+.card-type{font-size:10px;color:var(--sc-muted);margin-top:1px}
+.conf-badge{margin-left:auto;text-align:center;flex-shrink:0}
+.conf-pct{font-size:19px;font-weight:900}
+.conf-lbl{font-size:8px;color:var(--sc-muted);font-weight:700;text-transform:uppercase;letter-spacing:1px}
+
+/* Detail pills */
+.detail-grid{padding:12px 14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:7px}
+.d-item{background:var(--sc-card);border:1px solid #1e293b;border-radius:8px;padding:8px 10px}
+.d-lbl{font-size:9px;color:var(--sc-muted);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px}
+.d-val{font-size:12px;font-weight:700;color:var(--sc-text)}
+.d-val.green{color:var(--sc-green)}.d-val.yellow{color:var(--sc-yellow)}.d-val.red{color:var(--sc-red)}.d-val.accent{color:var(--sc-accent)}
+
+/* Alcohol */
+.alc-section{margin:0 14px 12px;background:var(--sc-card);border:1px solid #1e293b;border-radius:10px;padding:12px;display:none}
+.alc-section.visible{display:block}
+.alc-hdr{font-size:10px;font-weight:700;color:var(--sc-yellow);text-transform:uppercase;letter-spacing:1px;margin-bottom:9px}
+.bottle-vis{display:flex;align-items:flex-end;gap:16px}
+.alc-stats{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.alc-stat{text-align:center}
+.alc-val{font-size:16px;font-weight:900}
+.alc-lbl{font-size:8px;color:var(--sc-muted);text-transform:uppercase;letter-spacing:.8px}
+
+/* Item match section */
+.match-section{margin:0 14px 12px;border-radius:10px;overflow:hidden;display:none}
+.match-section.visible{display:block}
+.match-hdr{background:#111827;border-top:3px solid var(--sc-green);padding:8px 13px;
+  font-size:11px;font-weight:700;color:#f1f5f9}
+.match-table{width:100%;border-collapse:collapse;font-size:11px;font-family:'Segoe UI',Arial,sans-serif}
+.match-table th{background:#0d1b35;color:#94a3b8;font-size:9px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.8px;padding:7px 9px;text-align:left;border-bottom:1px solid var(--sc-border)}
+.match-table td{padding:7px 9px;border-bottom:1px solid #111827;color:var(--sc-text);vertical-align:middle}
+.match-table tr:hover td{background:rgba(56,189,248,.05)}
+.item-code{font-weight:700;color:var(--sc-accent);font-family:monospace;font-size:12px}
+.ai-desc-col{color:#94a3b8;font-size:10px;font-style:italic;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conf-pill{display:inline-block;padding:2px 7px;border-radius:8px;font-size:9px;font-weight:700;margin-left:4px}
+.conf-high{background:rgba(34,197,94,.15);color:#22c55e}
+.conf-med{background:rgba(245,158,11,.15);color:#f59e0b}
+.conf-low{background:rgba(239,68,68,.15);color:#ef4444}
+.no-match{padding:10px 13px;color:var(--sc-muted);font-size:11px}
+
+/* Notes */
+.notes-box{margin:0 14px 12px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);
+  border-radius:8px;padding:8px 12px;font-size:11px;color:#fcd34d;line-height:1.6;display:none}
+.notes-box.visible{display:block}
+
+/* History */
+.hist-panel{background:var(--sc-surface);border:1px solid var(--sc-border);border-radius:14px;overflow:hidden}
+.hist-hdr{background:var(--sc-card);padding:9px 14px;border-bottom:1px solid var(--sc-border);
+  display:flex;align-items:center;justify-content:space-between}
+.hist-title{font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:1px}
+.scan-count{font-size:11px;color:var(--sc-accent);font-weight:700}
+.tbl-wrap{overflow-x:auto;max-height:420px;overflow-y:auto}
+.sc-table{width:100%;border-collapse:collapse;font-size:11px}
+.sc-table thead th{background:#0d1b35;color:#94a3b8;font-size:9px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.8px;padding:8px 10px;text-align:left;white-space:nowrap;
+  position:sticky;top:0;z-index:2;border-bottom:2px solid var(--sc-border)}
+.sc-table tbody tr{border-bottom:1px solid #111827;transition:background .15s}
+.sc-table tbody tr:hover{background:rgba(56,189,248,.05)}
+.sc-table tbody td{padding:8px 10px;color:var(--sc-text);white-space:nowrap}
+.pill{display:inline-block;padding:2px 8px;border-radius:9px;font-size:9px;font-weight:700}
+.pill-alc{background:rgba(245,158,11,.15);color:#f59e0b}
+.pill-food{background:rgba(34,197,94,.12);color:#22c55e}
+.pill-bev{background:rgba(56,189,248,.12);color:#38bdf8}
+.pill-other{background:rgba(148,163,184,.12);color:#94a3b8}
+
+/* Toast */
+.sc-toast{position:fixed;bottom:22px;right:22px;background:var(--sc-card);border:1px solid var(--sc-border);
+  border-left:4px solid var(--sc-green);border-radius:10px;padding:11px 16px;font-size:12px;
+  font-weight:600;color:var(--sc-text);opacity:0;transform:translateY(16px);
+  transition:all .3s;z-index:1100;max-width:300px}
+.sc-toast.show{opacity:1;transform:translateY(0)}
+.sc-toast.error{border-left-color:var(--sc-red)}
+.empty-state{padding:22px;text-align:center;color:var(--sc-muted);font-size:11px}
+
+.two-col{display:grid;grid-template-columns:380px 1fr;gap:16px}
+@media(max-width:800px){.two-col{grid-template-columns:1fr}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="sc-wrap">
+
+  <!-- Page header -->
+  <div class="sc-page-hdr">
+    <div>
+      <div class="sc-page-title">🔬 AI Product Scanner</div>
+      <div class="sc-page-sub">Claude claude-sonnet-4-6 Vision · Identifies any product · Matches cc_item_master</div>
+    </div>
+    <div class="ai-badge">⚡ Agentic AI · Claude claude-sonnet-4-6</div>
+  </div>
+
+  <!-- Sub-tabs -->
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('camera',this)">📷 Camera Scan</button>
+    <button class="tab-btn"        onclick="switchTab('upload',this)">📁 Upload Image</button>
+    <button class="tab-btn"        onclick="switchTab('history',this)">📋 Scan History</button>
+  </div>
+
+  <!-- ═══ Camera Tab ═══ -->
+  <div class="tab-pane active" id="tab-camera">
+    <div class="two-col">
+      <div>
+        <div class="cam-panel">
+          <div class="panel-hdr">📷 Live Camera Feed</div>
+          <div class="perm-screen" id="permScreen">
+            <div class="perm-icon">📷</div>
+            <div class="perm-title">Camera Access Required</div>
+            <div class="perm-sub">Allow camera to scan products,<br>count quantities and detect alcohol fill levels.</div>
+            <button class="btn-allow" onclick="requestCamera()">Allow Camera</button>
+          </div>
+          <div class="camera-wrap" id="cameraWrap" style="display:none">
+            <video id="video" autoplay playsinline muted></video>
+            <canvas id="canvas" style="display:none"></canvas>
+            <div class="scan-overlay">
+              <div class="corner tl"></div><div class="corner tr"></div>
+              <div class="corner bl"></div><div class="corner br"></div>
+              <div class="scan-line" id="scanLine"></div>
+              <div class="cam-status" id="camStatus">Initialising…</div>
+            </div>
+          </div>
+          <div class="btn-area" id="btnArea" style="display:none">
+            <button class="sc-btn sc-btn-outline" onclick="switchCamera()" title="Flip">🔄</button>
+            <button class="sc-btn sc-btn-primary" id="scanBtn" onclick="captureAndScan()">
+              <span id="scanBtnIcon">🔍</span><span id="scanBtnText">Scan Product</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="spinner" id="spinnerCam"><div class="spin-ring"></div><div class="spin-text">Claude AI is analysing…</div></div>
+        <div id="resultCam"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Upload Tab ═══ -->
+  <div class="tab-pane" id="tab-upload">
+    <div class="two-col">
+      <div>
+        <div class="upload-zone" id="uploadZone">
+          <input type="file" id="fileInput" accept="image/*" onchange="handleFileSelect(this)">
+          <div class="upload-icon">📁</div>
+          <div class="upload-title">Drop image here or click to browse</div>
+          <div class="upload-sub">JPEG · PNG · WEBP · Max 10 MB</div>
+        </div>
+        <div class="preview-wrap" id="previewWrap">
+          <img id="previewImg" src="" alt="Preview">
+          <span class="preview-clear" onclick="clearUpload()">✕ Clear</span>
+        </div>
+        <div class="btn-area" style="padding:0">
+          <button class="sc-btn sc-btn-primary" id="uploadScanBtn" onclick="submitUpload()" disabled>
+            <span>🔍</span><span id="uploadBtnText">Identify Product</span>
+          </button>
+        </div>
+      </div>
+      <div>
+        <div class="spinner" id="spinnerUpload"><div class="spin-ring"></div><div class="spin-text">Claude AI is analysing…</div></div>
+        <div id="resultUpload"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ History Tab ═══ -->
+  <div class="tab-pane" id="tab-history">
+    <div class="hist-panel">
+      <div class="hist-hdr">
+        <span class="hist-title">📋 Scan History</span>
+        <span class="scan-count" id="scanCount">{{ recent_scans|length }} scans</span>
+      </div>
+      <div class="tbl-wrap">
+        <table class="sc-table">
+          <thead><tr>
+            <th>#</th><th>Time</th><th>Product</th><th>Brand</th><th>Category</th>
+            <th>Item Code</th><th>Matched Item</th><th>Match%</th>
+            <th>Qty/Units</th><th>Alcohol</th><th>Fill%</th><th>AI Conf.</th>
+          </tr></thead>
+          <tbody id="historyBody">
+            <tr><td colspan="12" class="empty-state">No scans yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /.sc-wrap -->
+
+<div class="sc-toast" id="toast"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ── Tab switching ────────────────────────────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ── Camera ───────────────────────────────────────────────────────────────────
+let stream = null, facingMode = 'environment', scanning = false;
+
+async function requestCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode, width:{ideal:1280}, height:{ideal:960} }, audio: false });
+    const v = document.getElementById('video');
+    v.srcObject = stream; await v.play();
+    document.getElementById('permScreen').style.display = 'none';
+    document.getElementById('cameraWrap').style.display = 'block';
+    document.getElementById('btnArea').style.display = 'flex';
+    setStatus('ready', '● Camera Ready');
+  } catch(e) { showToast('Camera denied: ' + e.message, 'error'); }
+}
+async function switchCamera() {
+  facingMode = facingMode === 'environment' ? 'user' : 'environment';
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  await requestCamera();
+}
+function setStatus(cls, txt) {
+  const el = document.getElementById('camStatus');
+  el.className = 'cam-status ' + cls; el.textContent = txt;
+}
+
+async function captureAndScan() {
+  if (scanning) return;
+  scanning = true;
+  const btn = document.getElementById('scanBtn');
+  btn.disabled = true;
+  document.getElementById('scanBtnText').textContent = 'Scanning…';
+  document.getElementById('scanLine').classList.add('active');
+  setStatus('scanning', '⚡ Analysing…');
+  document.getElementById('spinnerCam').classList.add('active');
+
+  const v = document.getElementById('video'), c = document.getElementById('canvas');
+  c.width = v.videoWidth||1280; c.height = v.videoHeight||960;
+  c.getContext('2d').drawImage(v, 0, 0);
+
+  try {
+    const resp = await fetch('/scanner/api/scan/', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRFToken':getCsrf()},
+      body: JSON.stringify({image: c.toDataURL('image/jpeg', 0.92)})
+    });
+    const json = await resp.json();
+    if (json.success) {
+      document.getElementById('resultCam').innerHTML = buildMultiResultHTML(json);
+      json.items.forEach(d => addHistoryRow(d));
+      showToast('✅ ' + json.item_count + ' item(s) identified' + (json.scene_description ? ' — ' + json.scene_description : ''));
+    } else { showToast('❌ ' + (json.error||'Scan failed'), 'error'); }
+  } catch(e) { showToast('❌ ' + e.message, 'error'); }
+  finally {
+    scanning = false; btn.disabled = false;
+    document.getElementById('scanBtnText').textContent = 'Scan Product';
+    document.getElementById('scanLine').classList.remove('active');
+    setStatus('ready', '● Camera Ready');
+    document.getElementById('spinnerCam').classList.remove('active');
+  }
+}
+
+// ── Upload ───────────────────────────────────────────────────────────────────
+let selectedFile = null;
+
+function handleFileSelect(input) {
+  const file = input.files[0]; if (!file) return;
+  selectedFile = file;
+  document.getElementById('previewImg').src = URL.createObjectURL(file);
+  document.getElementById('previewWrap').classList.add('visible');
+  document.getElementById('uploadScanBtn').disabled = false;
+}
+function clearUpload() {
+  selectedFile = null;
+  document.getElementById('previewWrap').classList.remove('visible');
+  document.getElementById('previewImg').src = '';
+  document.getElementById('fileInput').value = '';
+  document.getElementById('uploadScanBtn').disabled = true;
+  document.getElementById('resultUpload').innerHTML = '';
+}
+const zone = document.getElementById('uploadZone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+zone.addEventListener('drop', e => {
+  e.preventDefault(); zone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) {
+    document.getElementById('fileInput').files = e.dataTransfer.files;
+    handleFileSelect(document.getElementById('fileInput'));
+  }
+});
+
+async function submitUpload() {
+  if (!selectedFile) return;
+  document.getElementById('uploadScanBtn').disabled = true;
+  document.getElementById('uploadBtnText').textContent = 'Analysing…';
+  document.getElementById('spinnerUpload').classList.add('active');
+  document.getElementById('resultUpload').innerHTML = '';
+
+  const fd = new FormData(); fd.append('image', selectedFile);
+  try {
+    const resp = await fetch('/scanner/api/scan/upload/', {
+      method:'POST', headers:{'X-CSRFToken':getCsrf()}, body: fd
+    });
+    const json = await resp.json();
+    if (json.success) {
+      document.getElementById('resultUpload').innerHTML = buildMultiResultHTML(json);
+      json.items.forEach(d => addHistoryRow(d));
+      showToast('✅ ' + json.item_count + ' item(s) identified' + (json.scene_description ? ' — ' + json.scene_description : ''));
+    } else { showToast('❌ ' + (json.error||'Failed'), 'error'); }
+  } catch(e) { showToast('❌ ' + e.message, 'error'); }
+  finally {
+    document.getElementById('spinnerUpload').classList.remove('active');
+    document.getElementById('uploadScanBtn').disabled = false;
+    document.getElementById('uploadBtnText').textContent = 'Identify Product';
+  }
+}
+
+// ── Build result HTML ────────────────────────────────────────────────────────
+const CAT_ICONS = {Food:'🍽️',Beverage:'🥤',Alcohol:'🥃',Electronics:'📱',
+  FNV:'🌿',Household:'🏠',Personal_Care:'💄',Clothing:'👕',Other:'📦'};
+
+// Wrap multiple items
+function buildMultiResultHTML(json) {
+  const items = json.items || [json.data];
+  const providerBadge = json.provider
+    ? `<div style="font-size:10px;color:#64748b;margin-bottom:10px;">
+        🤖 <strong style="color:#94a3b8">${json.provider==='openai'?'ChatGPT GPT-4o':'Claude claude-sonnet-4-6'}</strong>
+        ${json.fallback_note?'<span style="color:#f59e0b;margin-left:6px;">⚡ Fallback used</span>':''}
+        ${items.length>1?`<span style="color:#38bdf8;margin-left:8px;">${items.length} items detected in image</span>`:''}
+        ${json.scene_description?`<span style="color:#64748b;margin-left:8px;font-style:italic;">${json.scene_description}</span>`:''}
+       </div>` : '';
+  if (items.length === 1) return providerBadge + buildResultHTML(items[0]);
+  return providerBadge + items.map((d, i) =>
+    `<div style="margin-bottom:12px;">
+       <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;
+            letter-spacing:1px;margin-bottom:5px;padding-left:4px;">
+         Item ${i+1} of ${items.length}
+       </div>
+       ${buildResultHTML(d)}
+     </div>`
+  ).join('')
+}
+
+function confPill(conf) {
+  if (!conf) return '';
+  const cls = conf==='HIGH'?'conf-high':conf==='MEDIUM'?'conf-med':'conf-low';
+  return `<span class="conf-pill ${cls}">${conf}</span>`;
+}
+
+function buildResultHTML(d) {
+  const conf   = d.confidence_score ? Math.round(d.confidence_score*100) : 0;
+  const confClr= conf>=80?'#22c55e':conf>=60?'#f59e0b':'#ef4444';
+  const catIcon= CAT_ICONS[d.category]||'📦';
+
+  // Detail pills
+  const pills = [
+    ['Total Units', d.total_units!=null?d.total_units:'—',''],
+    ['Cases',       d.num_cases!=null?d.num_cases:'—',''],
+    ['Pieces',      d.num_pieces!=null?d.num_pieces:'—',''],
+    ['Units/Case',  d.units_per_case!=null?d.units_per_case:'—',''],
+    ['UOM',         d.unit_of_measurement||'—','accent'],
+    ['Wt/Unit',     d.weight_per_unit!=null?d.weight_per_unit+' '+(d.weight_unit||''):'—',''],
+    ['Total Wt',    d.total_weight!=null?d.total_weight+' '+(d.weight_unit||''):'—',''],
+    ['📦 Grammage',  d.grammage||'—','accent'],
+    ['Barcode',      d.barcode||'—',''],
+    ['📅 Expiry/BB', d.expiry_date||'—', d.has_expiry===false&&!d.is_fnv?'red':'yellow'],
+    ['Country',      d.country_of_origin||'—',''],
+    ['⚖️ Scale',     d.scale_reading||'—','yellow'],
+  ].filter(([,v]) => v && v!=='—');
+
+  const pillsHTML = pills.map(([l,v,c]) =>
+    `<div class="d-item"><div class="d-lbl">${l}</div><div class="d-val ${c}">${v}</div></div>`
+  ).join('');
+
+  // Alcohol
+  let alcHTML = '';
+  if (d.is_alcohol) {
+    const fill = d.fill_level_pct!=null?d.fill_level_pct:100;
+    const liquidY = 138-(fill/100)*118;
+    const uid = Date.now();
+    alcHTML = `<div class="alc-section visible">
+      <div class="alc-hdr">🥃 ${d.alcohol_type||'Alcohol'}${d.alcohol_subtype?' — '+d.alcohol_subtype:''}</div>
+      <div class="bottle-vis">
+        <svg width="54" height="138" viewBox="0 0 60 140">
+          <path d="M22 20 Q18 30 14 50 L10 130 Q10 138 20 138 L40 138 Q50 138 50 130 L46 50 Q42 30 38 20 Z"
+            fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+          <clipPath id="lc${uid}"><rect x="10" y="${liquidY}" width="40" height="${138-liquidY}"/></clipPath>
+          <path d="M22 20 Q18 30 14 50 L10 130 Q10 138 20 138 L40 138 Q50 138 50 130 L46 50 Q42 30 38 20 Z"
+            fill="#f59e0b" opacity=".7" clip-path="url(#lc${uid})"/>
+          <rect x="22" y="8" width="16" height="13" rx="2" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+          <rect x="18" y="4" width="24" height="6" rx="2" fill="#334155"/>
+        </svg>
+        <div class="alc-stats">
+          <div class="alc-stat"><div class="alc-val" style="color:#f59e0b">${fill}%</div><div class="alc-lbl">Fill Level</div></div>
+          <div class="alc-stat"><div class="alc-val" style="color:#38bdf8">${d.bottle_size_ml||'—'} ml</div><div class="alc-lbl">Bottle Size</div></div>
+          <div class="alc-stat"><div class="alc-val" style="color:#22c55e">${d.ml_remaining!=null?Math.round(d.ml_remaining)+' ml':'—'}</div><div class="alc-lbl">Remaining</div></div>
+          <div class="alc-stat"><div class="alc-val" style="color:#ef4444">${d.ml_consumed!=null?Math.round(d.ml_consumed)+' ml':'—'}</div><div class="alc-lbl">Consumed</div></div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // Item master matches — all matches, best first, top match highlighted
+  const matches = d.item_matches||[];
+  let matchHTML = '';
+  if (matches.length) {
+    const aiDesc = `${d.product_name||'—'}${d.grammage?' '+d.grammage:''}${d.brand?' ('+d.brand+')':''}`;
+    const rows = matches.map((m,i) => {
+      const isBest = i===0;
+      const mClr = m.match_pct>=80?'#22c55e':m.match_pct>=65?'#f59e0b':'#ef4444';
+      const rowBg = isBest?'background:rgba(34,197,94,0.07);border-left:3px solid #22c55e;':'';
+      return `<tr style="${rowBg}">
+        <td class="item-code">${isBest?'⭐ ':''}${m.item_code||'—'}</td>
+        <td style="font-weight:${isBest?'700':'400'};max-width:220px;white-space:normal;">${m.item_name||'—'}</td>
+        <td style="color:#94a3b8;font-size:10px">${m.department||'—'}${m.grp?'<br><span style="color:#475569">'+m.grp+'</span>':''}</td>
+        <td style="color:#64748b;font-size:10px">${m.sub_group||'—'}</td>
+        <td style="color:#64748b">${m.uom||'—'}</td>
+        <td><span style="font-weight:700;color:${mClr}">${m.match_pct}%</span>${confPill(m.confidence)}</td>
+        <td class="ai-desc-col" title="${aiDesc}">${aiDesc}</td>
+      </tr>`;
+    }).join('');
+    matchHTML = `<div class="match-section visible">
+      <div class="match-hdr">✅ ${matches.length} match${matches.length>1?'es':''} from cc_item_master
+        <span style="font-size:9px;color:#64748b;font-weight:400;margin-left:8px;">TF-IDF + WRatio · best match first ⭐</span>
+      </div>
+      <div style="max-height:320px;overflow-y:auto;">
+      <table class="match-table">
+        <thead style="position:sticky;top:0;z-index:2;">
+          <tr><th>Code</th><th>Item Name</th><th>Dept / Group</th><th>Sub-Group</th><th>UOM</th><th>Match</th><th>AI Identified As</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      </div>
+    </div>`;
+  } else {
+    matchHTML = `<div class="match-section visible">
+      <div class="no-match">⚠️ No match found in cc_item_master for "<strong>${d.product_name||''}</strong>"</div>
+    </div>`;
+  }
+
+  const notesHTML = d.ai_notes?`<div class="notes-box visible">💡 ${d.ai_notes}</div>`:'';
+
+  // Expiry warning for non-FNV packaged items with no visible expiry
+  const expiryWarnHTML = (!d.is_fnv && d.has_expiry === false)
+    ? `<div style="margin:0 14px 10px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.35);
+        border-left:4px solid #ef4444;border-radius:8px;padding:8px 13px;font-size:11px;color:#fca5a5;">
+        ⚠️ <strong>No expiry / best before date visible</strong> on this pack — verify manually before shelving.
+       </div>` : '';
+
+  // FNV type badge
+  const fnvBadge = d.is_fnv
+    ? `<span style="font-size:9px;background:rgba(34,197,94,.15);color:#22c55e;border:1px solid #22c55e;
+        border-radius:10px;padding:2px 8px;font-weight:700;margin-left:8px;">🌿 FNV</span>`
+    : (d.grammage ? `<span style="font-size:9px;background:rgba(56,189,248,.15);color:#38bdf8;border:1px solid #38bdf8;
+        border-radius:10px;padding:2px 8px;font-weight:700;margin-left:8px;">${d.grammage}</span>` : '');
+
+  return `<div class="product-card visible">
+    <div class="card-hero">
+      <div class="cat-icon">${catIcon}</div>
+      <div>
+        <div class="card-name">${d.product_name||'Unknown Product'}${fnvBadge}</div>
+        <div class="card-brand">${d.brand||'—'}</div>
+        <div class="card-type">${d.product_type||d.category||'—'}</div>
+      </div>
+      <div class="conf-badge">
+        <div class="conf-pct" style="color:${confClr}">${conf}%</div>
+        <div class="conf-lbl">AI Confidence</div>
+      </div>
+    </div>
+    <div class="detail-grid">${pillsHTML}</div>
+    ${expiryWarnHTML}
+    ${alcHTML}
+    ${matchHTML}
+    ${notesHTML}
+  </div>`;
+}
+
+// ── History table ────────────────────────────────────────────────────────────
+function pillClass(cat){
+  if(!cat) return 'pill-other';
+  const c=cat.toLowerCase();
+  return c.includes('alcohol')?'pill-alc':c.includes('food')?'pill-food':c.includes('bev')?'pill-bev':'pill-other';
+}
+
+function addHistoryRow(d, prepend=true) {
+  const tbody = document.getElementById('historyBody');
+  const empty = tbody.querySelector('.empty-state');
+  if (empty) empty.closest('tr').remove();
+
+  const matches = d.item_matches||[];
+  const topCode = matches[0]?`<span style="color:#38bdf8;font-weight:700;font-family:monospace">${matches[0].item_code}</span>`:'—';
+  const topItem = matches[0]?matches[0].item_name:'—';
+  const topPct  = matches[0]?`<span style="font-weight:700;color:${matches[0].match_pct>=80?'#22c55e':matches[0].match_pct>=65?'#f59e0b':'#ef4444'}">${matches[0].match_pct}%</span>`:'—';
+  const fill    = d.is_alcohol&&d.fill_level_pct!=null?`<span style="color:#f59e0b;font-weight:700">${d.fill_level_pct}%</span>`:'—';
+  const qty     = d.total_units!=null?d.total_units+' '+(d.unit_of_measurement||''):'—';
+
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td style="color:#475569">${document.querySelectorAll('#historyBody tr').length+1}</td>
+    <td style="color:#64748b;font-size:10px">${d.scanned_at}</td>
+    <td style="font-weight:700;max-width:150px;overflow:hidden;text-overflow:ellipsis">${d.product_name||'—'}</td>
+    <td style="color:#38bdf8">${d.brand||'—'}</td>
+    <td><span class="pill ${pillClass(d.category)}">${d.category||'—'}</span></td>
+    <td>${topCode}</td>
+    <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis">${topItem}</td>
+    <td>${topPct}</td>
+    <td>${qty}</td>
+    <td style="color:#f59e0b">${d.is_alcohol?(d.alcohol_type||'Yes'):'—'}</td>
+    <td>${fill}</td>
+    <td style="color:#22c55e">${d.confidence_score?Math.round(d.confidence_score*100)+'%':'—'}</td>`;
+  prepend ? tbody.prepend(tr) : tbody.appendChild(tr);
+  document.getElementById('scanCount').textContent =
+    document.querySelectorAll('#historyBody tr').length + ' scans';
+}
+
+(function(){
+  const data = {{ recent_scans_json|safe }};
+  if (!data.length) return;
+  document.getElementById('historyBody').innerHTML = '';
+  data.forEach(d => addHistoryRow(d, false));
+})();
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+function showToast(msg, type='success') {
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.className='sc-toast show'+(type==='error'?' error':'');
+  setTimeout(()=>{ el.className='sc-toast'; }, 4000);
+}
+function getCsrf() {
+  return document.cookie.split(';').map(c=>c.trim().split('=')).find(([k])=>k==='csrftoken')?.[1]||'';
+}
+window.addEventListener('load', () => {
+  if (navigator.mediaDevices?.getUserMedia) requestCamera().catch(()=>{});
+});
+</script>
+{% endblock %}

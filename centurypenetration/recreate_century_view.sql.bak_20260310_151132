@@ -1,0 +1,82 @@
+-- Recreate mv_century_penetration after CASCADE drop
+CREATE MATERIALIZED VIEW mv_century_penetration AS
+SELECT 
+    -- Identification
+    r.item_code,
+    r.item_name,
+    r.shop_code,
+    r.dept,
+    r.brand,
+    
+    -- Stock levels
+    r.shop_stock as sih, -- Stock In Hand
+    COALESCE(sit.total_sit, 0) as sit, -- Stock In Transit
+    r.shop_stock + COALESCE(sit.total_sit, 0) as total_stock, -- SIH + SIT
+    
+    -- Sales metrics
+    COALESCE(sm.sales_30d, 0) as sales_30d,
+    COALESCE(sm.sales_60d, 0) as sales_60d,
+    COALESCE(sm.sales_90d, 0) as sales_90d,
+    COALESCE(sm.sales_365d, 0) as sales_365d,
+    
+    COALESCE(sm.value_30d, 0) as value_30d,
+    COALESCE(sm.value_60d, 0) as value_60d,
+    COALESCE(sm.value_90d, 0) as value_90d,
+    COALESCE(sm.value_365d, 0) as value_365d,
+    
+    -- Rate of Sales (ROS)
+    COALESCE(sm.ros, 0) as ros,
+    
+    -- Requirement for 21 days
+    ROUND(COALESCE(sm.ros, 0) * 21, 2) as req_21_days,
+    
+    -- Stock position (SIH + SIT - Req 21 days)
+    ROUND((r.shop_stock + COALESCE(sit.total_sit, 0)) - (COALESCE(sm.ros, 0) * 21), 2) as stock_variance,
+    
+    -- Pack size
+    COALESCE(r.pack_size, 0) as pack_size,
+    
+    -- Stock status (with pack_size tolerance)
+    CASE 
+        WHEN (r.shop_stock + COALESCE(sit.total_sit, 0)) - (COALESCE(sm.ros, 0) * 21) > COALESCE(r.pack_size, 0) THEN 'OverStock'
+        WHEN (r.shop_stock + COALESCE(sit.total_sit, 0)) - (COALESCE(sm.ros, 0) * 21) < -COALESCE(r.pack_size, 0) THEN 'UnderStock'
+        ELSE 'Balanced'
+    END as stock_status,
+    
+    -- Days of stock remaining
+    CASE 
+        WHEN COALESCE(sm.ros, 0) > 0 THEN 
+            ROUND((r.shop_stock + COALESCE(sit.total_sit, 0)) / COALESCE(sm.ros, 0), 1)
+        ELSE NULL
+    END as days_of_stock,
+    
+    -- Reorder parameters
+    r.min_nu,
+    r.max_nu,
+    r.reorder_qty,
+    r.selling_price,
+    
+    -- Last sale info
+    sm.last_sale_date,
+    sit.latest_transit_date,
+    
+    -- Metadata
+    CURRENT_TIMESTAMP as refreshed_at,
+    COALESCE(r.loaded_at, CURRENT_TIMESTAMP) as created_at
+    
+FROM reorder_level r
+LEFT JOIN mv_sales_metrics sm ON r.item_code = sm.item_code AND r.shop_code = sm.shop_code
+LEFT JOIN mv_sit_summary sit ON r.item_code = sit.item_code AND r.shop_code = sit.shop_code
+WHERE UPPER(r.brand) = 'CENTURY'; -- Filter for CENTURY brand only
+
+-- Indexes for fast querying
+CREATE INDEX idx_century_item_shop ON mv_century_penetration(item_code, shop_code);
+CREATE INDEX idx_century_shop ON mv_century_penetration(shop_code);
+CREATE INDEX idx_century_dept ON mv_century_penetration(dept);
+CREATE INDEX idx_century_status ON mv_century_penetration(stock_status);
+CREATE INDEX idx_century_ros ON mv_century_penetration(ros) WHERE ros > 0;
+CREATE INDEX idx_century_understock ON mv_century_penetration(stock_variance) WHERE stock_status = 'UnderStock';
+CREATE INDEX idx_century_overstock ON mv_century_penetration(stock_variance) WHERE stock_status = 'OverStock';
+
+-- Verify
+SELECT COUNT(*) as total_rows FROM mv_century_penetration;

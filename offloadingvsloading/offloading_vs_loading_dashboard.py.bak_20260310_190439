@@ -1,0 +1,865 @@
+import streamlit as st
+import psycopg2
+from datetime import datetime, timedelta, date
+from psycopg2.extras import RealDictCursor
+import html
+import plotly.graph_objects as go
+import streamlit.components.v1 as components
+import io
+import base64
+try:
+    from openpyxl import Workbook
+    from openpyxl.styles import PatternFill, Font, Alignment
+    OPENPYXL_AVAILABLE = True
+except Exception:
+    Workbook = None
+    PatternFill = None
+    Font = None
+    Alignment = None
+    OPENPYXL_AVAILABLE = False
+
+st.set_page_config(
+    page_title="Offloading vs Loading Dashboard",
+    page_icon="https://melcom.com/media/favicon/stores/1/faviconn_162_x_184px.jpg",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
+DB_CONFIG = {
+    "host": "localhost",
+    "port": 3307,
+    "user": "postgres",
+    "password": "hello",
+    "dbname": "WH",
+}
+
+
+def inject_css() -> None:
+    st.markdown(
+        """
+        <style>
+        #MainMenu, footer, header { visibility: hidden; }
+        html, body, .stApp {
+            background: #0a0f1e !important;
+            color: #e2e8f0 !important;
+            font-family: 'Inter', 'Segoe UI', sans-serif !important;
+        }
+        .block-container {
+            padding-top: 0.7rem !important;
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+            max-width: 100% !important;
+        }
+        .dashboard-title {
+            color: #f1f5f9;
+            font-size: 1.3rem;
+            font-weight: 800;
+            line-height: 1.15;
+        }
+        .dashboard-sub {
+            color: #94a3b8;
+            font-size: 0.78rem;
+            font-weight: 500;
+        }
+        .section-title {
+            color: #dbeafe;
+            font-size: 1rem;
+            font-weight: 700;
+            margin: 0.5rem 0 0.5rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def get_db_connection():
+    return psycopg2.connect(**DB_CONFIG)
+
+
+@st.cache_data(ttl=300)
+def load_date_bounds() -> tuple:
+    query = """
+        SELECT MIN(date) AS min_date, MAX(date) AS max_date
+        FROM offloading_vs_loading
+        WHERE date IS NOT NULL
+    """
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query)
+            row = cur.fetchone()
+    if not row or row[0] is None or row[1] is None:
+        return None, None
+    return row[0], row[1]
+
+
+@st.cache_data(ttl=300)
+def load_offloading_vs_loading(start_date, end_date) -> list[dict]:
+    query = """
+        SELECT
+            date,
+            shop_code,
+            vehicle_no,
+            item_code,
+            item_name,
+            qty_loaded,
+            value_loaded,
+            qty_offloaded,
+            value_offloaded,
+            diff_qty,
+            diff_val
+        FROM offloading_vs_loading
+        WHERE date BETWEEN %(s)s AND %(e)s
+        ORDER BY date DESC, shop_code, vehicle_no, item_code
+    """
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, {"s": start_date, "e": end_date})
+            return [dict(r) for r in cur.fetchall()]
+
+
+@st.cache_data(ttl=300)
+def load_monthly_summary(start_date, end_date) -> list[dict]:
+    query = """
+        SELECT
+            to_char(date_trunc('month', date), 'YYYY-MM') AS month_key,
+            to_char(date_trunc('month', date), 'Mon YYYY') AS month_label,
+            SUM(diff_qty)::numeric AS diff_qty,
+            SUM(diff_val)::numeric AS diff_val
+        FROM offloading_vs_loading
+        WHERE date BETWEEN %(s)s AND %(e)s
+        GROUP BY 1, 2
+        ORDER BY month_key
+    """
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, {"s": start_date, "e": end_date})
+            return [dict(r) for r in cur.fetchall()]
+
+
+@st.cache_data(ttl=300)
+def load_monthly_summary_all() -> list[dict]:
+    query = """
+        SELECT
+            to_char(date_trunc('month', date), 'YYYY-MM') AS month_key,
+            to_char(date_trunc('month', date), 'Mon YYYY') AS month_label,
+            SUM(diff_qty)::numeric AS diff_qty,
+            SUM(diff_val)::numeric AS diff_val
+        FROM offloading_vs_loading
+        WHERE date IS NOT NULL
+        GROUP BY 1, 2
+        ORDER BY month_key
+    """
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query)
+            return [dict(r) for r in cur.fetchall()]
+
+
+@st.cache_data(ttl=300)
+def load_shop_summary(start_date, end_date) -> list[dict]:
+    query = """
+        SELECT
+            shop_code,
+            SUM(qty_loaded)::numeric AS qty_loaded,
+            SUM(value_loaded)::numeric AS value_loaded,
+            SUM(qty_offloaded)::numeric AS qty_offloaded,
+            SUM(value_offloaded)::numeric AS value_offloaded,
+            SUM(diff_qty)::numeric AS diff_qty,
+            SUM(diff_val)::numeric AS diff_val
+        FROM offloading_vs_loading
+        WHERE date BETWEEN %(s)s AND %(e)s
+        GROUP BY shop_code
+        ORDER BY ABS(SUM(diff_val)) DESC, ABS(SUM(diff_qty)) DESC
+    """
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, {"s": start_date, "e": end_date})
+            return [dict(r) for r in cur.fetchall()]
+
+
+@st.cache_data(ttl=300)
+def load_shop_name_map() -> dict[str, str]:
+    query = """
+        SELECT
+            UPPER(TRIM(shop_code)) AS shop_code,
+            MAX(TRIM(shop_name)) AS shop_name
+        FROM offloading_loading_staging
+        WHERE TRIM(COALESCE(shop_code, '')) <> ''
+        GROUP BY UPPER(TRIM(shop_code))
+    """
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query)
+            rows = cur.fetchall()
+    return {str(r["shop_code"]): str(r["shop_name"] or "").strip() for r in rows}
+
+
+def render_metrics(rows: list[dict], start_date, end_date) -> None:
+    total_wh_loaded_qty = sum(float(r.get("qty_loaded") or 0) for r in rows)
+    total_shop_receiving_qty = sum(float(r.get("qty_offloaded") or 0) for r in rows)
+    total_diff_qty = sum(float(r.get("diff_qty") or 0) for r in rows)
+    total_diff_val = sum(float(r.get("diff_val") or 0) for r in rows)
+
+    st.markdown(
+        f"<div style='color:#94a3b8;font-size:0.8rem;margin:0.2rem 0 0.6rem;'>Selected Range: {start_date.strftime('%d %b %Y')} → {end_date.strftime('%d %b %Y')}</div>",
+        unsafe_allow_html=True,
+    )
+
+    cols = st.columns(4)
+    cards = [
+        ("WH Loaded Qty", f"{total_wh_loaded_qty:,.0f}"),
+        ("Shop Receiving Qty", f"{total_shop_receiving_qty:,.0f}"),
+        ("Diff Qty (Shop - WH)", f"{total_diff_qty:,.0f}"),
+        ("Diff Value (Shop - WH)", f"{total_diff_val:,.2f}"),
+    ]
+
+    for col, (label, value) in zip(cols, cards):
+        with col:
+            st.markdown(
+                f"""
+                <div style="background:linear-gradient(160deg,#0c1a3a 0%,#080f22 100%);border:1px solid rgba(59,130,246,0.22);border-radius:14px;padding:12px;">
+                    <div style="color:#94a3b8;font-size:0.70rem;text-transform:uppercase;font-weight:700;letter-spacing:0.05em;">{label}</div>
+                    <div style="color:#f8fafc;font-size:1.4rem;font-weight:800;line-height:1.15;margin-top:2px;">{value}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+
+def render_monthly_graph(monthly_rows: list[dict]) -> None:
+    if not monthly_rows:
+        st.info("No monthly data for selected range.")
+        return
+
+    x_vals = [r.get("month_label", "") for r in monthly_rows]
+    diff_val = [float(r.get("diff_val") or 0) for r in monthly_rows]
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=x_vals,
+            y=diff_val,
+            mode="lines+markers",
+            name="Diff Value",
+            line=dict(color="#f59e0b", width=3),
+            marker=dict(size=7, color="#f59e0b"),
+        )
+    )
+
+    fig.update_layout(
+        title="Month-on-Month Difference Value",
+        xaxis_title="Month",
+        yaxis_title="Diff Value",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(17,26,51,0.65)",
+        font=dict(color="#e2e8f0"),
+        margin=dict(l=30, r=30, t=50, b=30),
+        height=340,
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def render_sortable_html_table(
+    title: str,
+    headers: list[str],
+    rows: list[list[str]],
+    sort_values: list[list[str]],
+    table_id: str,
+    min_width_px: int = 1120,
+    row_link_values: list[str] | None = None,
+    row_link_param: str = "detail_shop",
+    show_title: bool = True,
+    cell_styles: dict[tuple[int, int], str] | None = None,
+    enable_download_hover: bool = False,
+    download_file_name: str = "table_export.csv",
+    excel_base64: str | None = None,
+) -> None:
+    if not rows:
+        st.info("No rows to display.")
+        return
+
+    header_html = "".join(f"<th data-col='{idx}'>{html.escape(h)} ⬍</th>" for idx, h in enumerate(headers))
+    body_parts = []
+    for row_idx, row in enumerate(rows):
+        cells = []
+        row_shop = None
+        if row_link_values and row_idx < len(row_link_values):
+            link_value = str(row_link_values[row_idx] or "").strip()
+            if link_value:
+                row_shop = link_value
+        for col_idx, val in enumerate(row):
+            sval = sort_values[row_idx][col_idx]
+            style_attr = ""
+            if cell_styles:
+                style_txt = cell_styles.get((row_idx, col_idx), "")
+                if style_txt:
+                    style_attr = f" style='{style_txt}'"
+            if row_shop:
+                cells.append(
+                    f"<td data-sort='{html.escape(str(sval))}' data-shop='{html.escape(row_shop)}' class='shop-click-cell' {style_attr}>{html.escape(str(val))}</td>"
+                )
+            else:
+                cells.append(f"<td data-sort='{html.escape(str(sval))}'{style_attr}>{html.escape(str(val))}</td>")
+        body_parts.append("<tr>" + "".join(cells) + "</tr>")
+    body_html = "".join(body_parts)
+
+    if show_title:
+        st.markdown(
+            f"<div class='section-title'>{title}</div>",
+            unsafe_allow_html=True,
+        )
+
+    download_button_html = ""
+    if enable_download_hover:
+        download_button_html = f"<button id='{table_id}-download' class='table-download-btn' title='Download CSV'>⭳</button>"
+
+    table_html = f"""
+        <style>
+        .table-shell-{table_id} {{
+            position: relative;
+        }}
+        .table-download-btn {{
+            position: absolute;
+            top: 8px;
+            right: 10px;
+            z-index: 20;
+            border: 1px solid rgba(96, 165, 250, 0.95);
+            background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+            color: #ffffff;
+            border-radius: 8px;
+            font-size: 13px;
+            line-height: 1;
+            padding: 7px 9px;
+            cursor: pointer;
+            opacity: 0.92;
+            transition: opacity .18s ease;
+            box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.28), 0 8px 20px rgba(37, 99, 235, 0.45);
+        }}
+        .table-shell-{table_id}:hover .table-download-btn {{
+            opacity: 1;
+        }}
+        .table-download-btn:hover {{
+            background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.40), 0 10px 24px rgba(29, 78, 216, 0.55);
+        }}
+        #{table_id}-wrap {{
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 14px;
+            overflow: auto;
+            max-height: 620px;
+            background: linear-gradient(135deg, #111a33 0%, #0b1226 100%);
+        }}
+        #{table_id} {{
+            width: 100%;
+            border-collapse: collapse;
+            min-width: {min_width_px}px;
+            font-family: Inter, Segoe UI, sans-serif;
+        }}
+        #{table_id} th {{
+            background: rgba(30, 58, 138, 0.55);
+            color: #e2e8f0;
+            font-size: 0.76rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            text-align: center;
+            padding: 8px;
+            border-bottom: 1px solid rgba(139, 92, 246, 0.35);
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+        }}
+        #{table_id} td {{
+            color: #e2e8f0;
+            font-size: 0.8rem;
+            text-align: center;
+            padding: 7px;
+            border-bottom: 1px solid rgba(71, 85, 105, 0.28);
+            white-space: nowrap;
+        }}
+        #{table_id} tbody tr:hover {{
+            background: rgba(99, 102, 241, 0.12);
+        }}
+        #{table_id} td:nth-child(5) {{
+            text-align: left;
+            max-width: 420px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+        #{table_id} td a:hover {{
+            text-decoration: underline;
+        }}
+        #{table_id} td.shop-click-cell {{
+            cursor: pointer;
+        }}
+        #{table_id} td.shop-click-cell:hover {{
+            background: rgba(59, 130, 246, 0.18);
+        }}
+        </style>
+        <div class="table-shell-{table_id}">
+            {download_button_html}
+            <div id="{table_id}-wrap">
+                <table id="{table_id}">
+                    <thead><tr>{header_html}</tr></thead>
+                    <tbody>{body_html}</tbody>
+                </table>
+            </div>
+        </div>
+        <script>
+        (() => {{
+            const table = document.getElementById('{table_id}');
+            if (!table) return;
+            const headers = table.querySelectorAll('thead th');
+            const tbody = table.querySelector('tbody');
+            let sortState = {{ col: -1, asc: true }};
+
+            const parseVal = (raw) => {{
+                const cleaned = String(raw || '').replace(/,/g, '').trim();
+                const n = Number(cleaned);
+                return Number.isNaN(n) ? cleaned.toLowerCase() : n;
+            }};
+
+            headers.forEach((th, idx) => {{
+                th.addEventListener('click', () => {{
+                    const rows = Array.from(tbody.querySelectorAll('tr'));
+                    const asc = sortState.col === idx ? !sortState.asc : true;
+                    rows.sort((a, b) => {{
+                        const av = parseVal(a.children[idx].getAttribute('data-sort'));
+                        const bv = parseVal(b.children[idx].getAttribute('data-sort'));
+                        if (av < bv) return asc ? -1 : 1;
+                        if (av > bv) return asc ? 1 : -1;
+                        return 0;
+                    }});
+                    rows.forEach(r => tbody.appendChild(r));
+                    sortState = {{ col: idx, asc }};
+                }});
+            }});
+
+            const clickableCells = table.querySelectorAll('td.shop-click-cell[data-shop]');
+            clickableCells.forEach((td) => {{
+                td.addEventListener('click', () => {{
+                    const shop = String(td.getAttribute('data-shop') || '').trim();
+                    if (!shop) return;
+                    try {{
+                        const baseUrl = new URL(window.parent.location.href);
+                        baseUrl.searchParams.set('{row_link_param}', shop);
+                        window.parent.location.href = baseUrl.toString();
+                    }} catch (e) {{
+                        const fallback = `?{row_link_param}=${{encodeURIComponent(shop)}}`;
+                        window.parent.location.href = fallback;
+                    }}
+                }});
+            }});
+
+            const downloadBtn = document.getElementById('{table_id}-download');
+            if (downloadBtn) {{
+                downloadBtn.addEventListener('click', () => {{
+                    const link = document.createElement('a');
+                    const excelB64 = '{excel_base64 or ""}';
+                    if (excelB64) {{
+                        link.href = `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${{excelB64}}`;
+                    }} else {{
+                        const csvEscape = (v) => `"${{String(v ?? '').replace(/"/g, '""')}}"`;
+                        const headerVals = Array.from(table.querySelectorAll('thead th')).map(th => th.innerText.replace('⬍', '').trim());
+                        const bodyVals = Array.from(table.querySelectorAll('tbody tr')).map(tr =>
+                            Array.from(tr.querySelectorAll('td')).map(td => td.innerText.trim())
+                        );
+                        const csvLines = [headerVals, ...bodyVals].map(row => row.map(csvEscape).join(','));
+                        const csv = csvLines.join('\\n');
+                        const blob = new Blob([csv], {{ type: 'text/csv;charset=utf-8;' }});
+                        link.href = URL.createObjectURL(blob);
+                    }}
+                    link.download = '{download_file_name}';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    if (!excelB64) URL.revokeObjectURL(link.href);
+                }});
+            }}
+        }})();
+        </script>
+        """
+    viewport_height = min(640, max(240, 86 + len(rows) * 30))
+    components.html(table_html, height=viewport_height, scrolling=False)
+
+
+def render_detail_table(rows: list[dict]) -> None:
+    headers = [
+        "Date",
+        "Shop Code",
+        "Vehicle No",
+        "Item Code",
+        "Item Name",
+        "WH Loaded Qty",
+        "WH Loaded Value",
+        "Shop Receiving Qty",
+        "Shop Receiving Value",
+        "Diff Qty",
+        "Diff Val",
+    ]
+
+    def num_fmt(v, decimals=2):
+        try:
+            return f"{float(v):,.{decimals}f}"
+        except Exception:
+            return "0.00" if decimals == 2 else "0"
+
+    table_rows = []
+    sort_rows = []
+
+    def diff_cell_style(raw_value: float) -> str:
+        try:
+            num = float(raw_value)
+        except Exception:
+            num = 0.0
+
+        if num == 0:
+            return "background: rgba(74, 222, 128, 0.20); color: #dcfce7; font-weight: 700;"
+
+        cap = 100000000.0
+        ratio = min(abs(num), cap) / cap
+        alpha = 0.12 + (0.36 * ratio)
+        return f"background: rgba(248, 113, 113, {alpha:.3f}); color: #fecaca; font-weight: 700;"
+
+    def _interpolate_hex(c1: str, c2: str, t: float) -> str:
+        t = max(0.0, min(1.0, t))
+        r1, g1, b1 = int(c1[0:2], 16), int(c1[2:4], 16), int(c1[4:6], 16)
+        r2, g2, b2 = int(c2[0:2], 16), int(c2[2:4], 16), int(c2[4:6], 16)
+        r = int(r1 + (r2 - r1) * t)
+        g = int(g1 + (g2 - g1) * t)
+        b = int(b1 + (b2 - b1) * t)
+        return f"{r:02X}{g:02X}{b:02X}"
+
+    def _excel_diff_fill(raw_value: float):
+        if not OPENPYXL_AVAILABLE:
+            return None
+        try:
+            num = float(raw_value)
+        except Exception:
+            num = 0.0
+
+        if num == 0:
+            color_hex = "DCFCE7"
+        else:
+            ratio = min(abs(num), 100000000.0) / 100000000.0
+            color_hex = _interpolate_hex("FEE2E2", "B91C1C", ratio)
+        return PatternFill(fill_type="solid", start_color=f"FF{color_hex}", end_color=f"FF{color_hex}")
+
+    def build_detail_excel_bytes(table_data: list[list[str]], original_rows: list[dict]) -> bytes:
+        if not OPENPYXL_AVAILABLE:
+            return b""
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Offloading vs Loading Detail"
+
+        for col_idx, col_name in enumerate(headers, start=1):
+            cell = ws.cell(row=1, column=col_idx, value=col_name)
+            cell.font = Font(bold=True, color="FFE2E8F0")
+            cell.fill = PatternFill(fill_type="solid", start_color="FF1E3A8A", end_color="FF1E3A8A")
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        for row_num, row_vals in enumerate(table_data, start=2):
+            for col_idx, val in enumerate(row_vals, start=1):
+                c = ws.cell(row=row_num, column=col_idx, value=val)
+                c.alignment = Alignment(horizontal="center", vertical="center")
+
+            if row_num - 2 < len(original_rows):
+                src = original_rows[row_num - 2]
+                qty_fill = _excel_diff_fill(float(src.get("diff_qty") or 0))
+                val_fill = _excel_diff_fill(float(src.get("diff_val") or 0))
+                ws.cell(row=row_num, column=10).fill = qty_fill
+                ws.cell(row=row_num, column=11).fill = val_fill
+                ws.cell(row=row_num, column=10).font = Font(bold=True)
+                ws.cell(row=row_num, column=11).font = Font(bold=True)
+
+        widths = [14, 12, 14, 12, 42, 14, 16, 18, 18, 12, 14]
+        for idx, w in enumerate(widths, start=1):
+            ws.column_dimensions[chr(64 + idx)].width = w
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        return buf.getvalue()
+
+    cell_styles: dict[tuple[int, int], str] = {}
+
+    for r in rows:
+        date_text = r.get("date").strftime("%d %b %Y") if r.get("date") else ""
+        diff_qty_raw = float(r.get("diff_qty") or 0)
+        diff_val_raw = float(r.get("diff_val") or 0)
+        row_display = [
+            date_text,
+            str(r.get("shop_code", "") or ""),
+            str(r.get("vehicle_no", "") or ""),
+            str(r.get("item_code", "") or ""),
+            str(r.get("item_name", "") or ""),
+            num_fmt(r.get("qty_loaded", 0), 0),
+            num_fmt(r.get("value_loaded", 0), 2),
+            num_fmt(r.get("qty_offloaded", 0), 0),
+            num_fmt(r.get("value_offloaded", 0), 2),
+            num_fmt(diff_qty_raw, 0),
+            num_fmt(diff_val_raw, 2),
+        ]
+        row_sort = [
+            str(r.get("date") or ""),
+            str(r.get("shop_code", "") or ""),
+            str(r.get("vehicle_no", "") or ""),
+            str(r.get("item_code", "") or ""),
+            str(r.get("item_name", "") or ""),
+            str(float(r.get("qty_loaded") or 0)),
+            str(float(r.get("value_loaded") or 0)),
+            str(float(r.get("qty_offloaded") or 0)),
+            str(float(r.get("value_offloaded") or 0)),
+            str(diff_qty_raw),
+            str(diff_val_raw),
+        ]
+        row_idx = len(table_rows)
+        table_rows.append(row_display)
+        sort_rows.append(row_sort)
+        cell_styles[(row_idx, 9)] = diff_cell_style(diff_qty_raw)
+        cell_styles[(row_idx, 10)] = diff_cell_style(diff_val_raw)
+
+    excel_b64 = None
+    download_name = "offloading_vs_loading_detail.csv"
+    if OPENPYXL_AVAILABLE:
+        excel_bytes = build_detail_excel_bytes(table_rows, rows)
+        excel_b64 = base64.b64encode(excel_bytes).decode("utf-8") if excel_bytes else None
+        if excel_b64:
+            download_name = "offloading_vs_loading_detail.xlsx"
+
+    render_sortable_html_table(
+        title="Offloading vs Loading (Detail)",
+        headers=headers,
+        rows=table_rows,
+        sort_values=sort_rows,
+        table_id="ovl-detail-table",
+        min_width_px=1120,
+        show_title=False,
+        cell_styles=cell_styles,
+        enable_download_hover=True,
+        download_file_name=download_name,
+        excel_base64=excel_b64,
+    )
+
+
+def render_shop_summary_table(rows: list[dict]) -> None:
+    if not rows:
+        st.info("No rows to display.")
+        return
+
+    def num_fmt(v, decimals=2):
+        try:
+            return f"{float(v):,.{decimals}f}"
+        except Exception:
+            return "0.00" if decimals == 2 else "0"
+
+    table_rows = []
+    sort_rows = []
+    for r in rows:
+        diff_qty = float(r.get("diff_qty") or 0)
+        diff_val = float(r.get("diff_val") or 0)
+        table_rows.append([
+            str(r.get("shop_code", "") or ""),
+            num_fmt(diff_qty, 0),
+            num_fmt(diff_val, 2),
+        ])
+        sort_rows.append([
+            str(r.get("shop_code", "") or ""),
+            str(diff_qty),
+            str(diff_val),
+        ])
+
+    render_sortable_html_table(
+        title="Shop-wise Difference (Qty & Value)",
+        headers=["Shop Code", "Diff Qty", "Diff Val"],
+        rows=table_rows,
+        sort_values=sort_rows,
+        table_id="ovl-shop-table",
+        min_width_px=360,
+    )
+
+
+def render_detail_filter_header(
+    available_shop_codes: list[str],
+    shop_name_map: dict[str, str],
+    clicked_shop: str | None = None,
+) -> tuple[str, str]:
+    options = ["All"] + sorted(available_shop_codes)
+    preferred = str(clicked_shop or st.session_state.get("detail_shop_filter", "All") or "All").strip().upper()
+    if preferred not in options:
+        preferred = "All"
+
+    receive_options = ["All", "Under Received", "Over Received"]
+    receive_preferred = str(st.session_state.get("detail_receive_filter", "All") or "All")
+    if receive_preferred not in receive_options:
+        receive_preferred = "All"
+
+    title_col, receive_col, filter_col = st.columns([0.62, 0.18, 0.20], gap="small")
+    with receive_col:
+        selected_receive = st.selectbox(
+            "Receive Filter",
+            options=receive_options,
+            index=receive_options.index(receive_preferred),
+            key="detail_receive_filter",
+            label_visibility="collapsed",
+        )
+    with filter_col:
+        selected = st.selectbox(
+            "Detail Shop",
+            options=options,
+            index=options.index(preferred),
+            key="detail_shop_filter",
+            label_visibility="collapsed",
+        )
+
+    title_text = "Offloading vs Loading (Detail)"
+    if selected != "All":
+        shop_name = (shop_name_map.get(selected) or "").strip()
+        if shop_name:
+            title_text = f"Offloading vs Loading (Detail) — {selected} ({shop_name})"
+        else:
+            title_text = f"Offloading vs Loading (Detail) — {selected}"
+    with title_col:
+        st.markdown(f"<div class='section-title'>{html.escape(title_text)}</div>", unsafe_allow_html=True)
+
+    return selected, selected_receive
+
+
+def render_header_with_date_filter(min_date, max_date):
+    def _coerce_date(val):
+        if isinstance(val, date):
+            return val
+        if isinstance(val, datetime):
+            return val.date()
+        if isinstance(val, str):
+            try:
+                return datetime.fromisoformat(val).date()
+            except Exception:
+                return None
+        return None
+
+    yesterday = (datetime.today() - timedelta(days=1)).date()
+    default_end = max_date if max_date and max_date <= yesterday else yesterday
+    default_start = min_date
+
+    saved_raw = st.session_state.get("offload_date_range", (default_start, default_end))
+    if isinstance(saved_raw, (tuple, list)):
+        parsed = [_coerce_date(v) for v in saved_raw]
+        parsed = [p for p in parsed if p is not None]
+        if len(parsed) >= 2:
+            saved = (parsed[0], parsed[1])
+        elif len(parsed) == 1:
+            saved = (parsed[0], parsed[0])
+        else:
+            saved = (default_start, default_end)
+    else:
+        parsed_one = _coerce_date(saved_raw)
+        saved = (parsed_one, parsed_one) if parsed_one else (default_start, default_end)
+
+    hdr_col, date_col, refresh_col = st.columns([0.72, 0.20, 0.08])
+
+    with hdr_col:
+        st.markdown(
+            """
+            <div style="display:flex;align-items:center;gap:12px;padding:4px 0 8px 0;">
+                <img src="https://melcom.com/media/favicon/stores/1/faviconn_162_x_184px.jpg"
+                     style="height:34px;border-radius:50%;border:2px solid #3b82f6;">
+                <div>
+                    <div class="dashboard-title">Offloading vs Loading Dashboard</div>
+                    <div class="dashboard-sub">WH Database · Tabular reconciliation view</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with date_col:
+        st.markdown(
+            '<div style="text-align:right;font-size:0.72rem;color:#6ee7b7;font-weight:600;margin-bottom:2px;">Date Range</div>',
+            unsafe_allow_html=True,
+        )
+        selection = st.date_input(
+            "offload_date_pick",
+            value=(saved[0], saved[1]),
+            min_value=min_date,
+            max_value=max_date,
+            key="offload_date_pick",
+            label_visibility="collapsed",
+        )
+
+    with refresh_col:
+        st.markdown('<div style="margin-top:18px;"></div>', unsafe_allow_html=True)
+        if st.button("🔄", key="offload_refresh", help="Clear cache and reload"):
+            st.cache_data.clear()
+            st.rerun()
+
+    if isinstance(selection, tuple) and len(selection) == 2:
+        d_start = _coerce_date(selection[0])
+        d_end = _coerce_date(selection[1])
+        if d_start is None and d_end is None:
+            d_start, d_end = default_start, default_end
+        elif d_start is None:
+            d_start = d_end
+        elif d_end is None:
+            d_end = d_start
+    elif isinstance(selection, (tuple, list)) and len(selection) == 1:
+        only_date = _coerce_date(selection[0]) or default_end
+        d_start = d_end = only_date
+    else:
+        single = _coerce_date(selection) or default_end
+        d_start = d_end = single
+
+    if d_start > d_end:
+        d_start, d_end = d_end, d_start
+
+    st.session_state["offload_date_range"] = (d_start, d_end)
+    return d_start, d_end
+
+
+def main() -> None:
+    inject_css()
+
+    min_date, max_date = load_date_bounds()
+    if min_date is None or max_date is None:
+        st.error("No data found in `offloading_vs_loading`. Run setup script first.")
+        return
+
+    start_date, end_date = render_header_with_date_filter(min_date, max_date)
+
+    data = load_offloading_vs_loading(start_date, end_date)
+    if not data:
+        st.info("No records for selected date range.")
+        return
+
+    render_metrics(data, start_date, end_date)
+    monthly_rows = load_monthly_summary_all()
+    shop_rows = load_shop_summary(start_date, end_date)
+
+    left_col, right_col = st.columns([1.2, 1.5], gap="small")
+    with left_col:
+        render_monthly_graph(monthly_rows)
+    with right_col:
+        render_shop_summary_table(shop_rows)
+
+    available_shop_codes = sorted({str(r.get("shop_code", "") or "").strip().upper() for r in data if str(r.get("shop_code", "") or "").strip()})
+    shop_name_map = load_shop_name_map()
+    selected_shop, selected_receive = render_detail_filter_header(available_shop_codes, shop_name_map)
+    filtered_detail = data if selected_shop == "All" else [
+        r for r in data
+        if str(r.get("shop_code", "") or "").strip().upper() == selected_shop
+    ]
+
+    if selected_receive == "Under Received":
+        filtered_detail = [r for r in filtered_detail if float(r.get("diff_val") or 0) < 0]
+    elif selected_receive == "Over Received":
+        filtered_detail = [r for r in filtered_detail if float(r.get("diff_val") or 0) > 0]
+
+    render_detail_table(filtered_detail)
+
+
+if __name__ == "__main__":
+    main()

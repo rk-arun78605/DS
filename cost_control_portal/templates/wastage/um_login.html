@@ -1,0 +1,81 @@
+{% extends 'wastage/base.html' %}
+{% block title %}User Management — Login{% endblock %}
+
+{% block content %}
+<div class="login-page">
+  <div class="login-card animate-fade-up" style="max-width:400px;">
+
+    <div class="login-header">
+      <img src="/static/img/melcom-logo.png" alt="Melcom" class="login-logo"
+           onerror="this.outerHTML='<div style=\'font-size:2rem;font-weight:900;color:#fff;margin-bottom:.5rem;\'>MELCOM</div>'" />
+      <p class="login-title">User Management</p>
+    </div>
+
+    <div class="login-body">
+      <div class="text-center mb-3">
+        <span class="badge bg-danger px-3 py-2" style="font-size:12px;">
+          <i class="bi bi-shield-lock me-1"></i>Management Access Only
+        </span>
+      </div>
+      <p class="text-muted text-center mb-4" style="font-size:13px;">
+        Enter your Management credentials to continue
+      </p>
+
+      {% if error %}
+      <div class="alert alert-danger d-flex align-items-center gap-2 py-2 mb-3" style="font-size:13px">
+        <i class="bi bi-exclamation-circle-fill text-danger"></i>
+        {{ error }}
+      </div>
+      {% endif %}
+
+      <form method="POST" autocomplete="off">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}" />
+
+        <div class="mb-3">
+          <label class="form-label" for="empId">
+            <i class="bi bi-person-badge me-1"></i>Employee ID
+          </label>
+          <input type="text" id="empId" name="emp_id" class="form-control"
+                 placeholder="Management Employee ID" autofocus required
+                 value="{{ request.POST.emp_id|default:'' }}" />
+        </div>
+
+        <div class="mb-4">
+          <label class="form-label" for="password">
+            <i class="bi bi-lock me-1"></i>Password
+          </label>
+          <div class="position-relative">
+            <input type="password" id="password" name="password" class="form-control"
+                   placeholder="Management password" required />
+            <button type="button"
+                    class="btn btn-sm position-absolute end-0 top-50 translate-middle-y me-2 bg-transparent border-0 text-muted"
+                    onclick="togglePwd()">
+              <i class="bi bi-eye" id="eyeIcon"></i>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-melcom w-100 py-2">
+          <i class="bi bi-shield-check me-2"></i>Authenticate
+        </button>
+      </form>
+
+      <div class="text-center mt-3">
+        <a href="/login/" class="text-muted" style="font-size:12px;">
+          <i class="bi bi-arrow-left me-1"></i>Back to Login
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function togglePwd() {
+  const inp = document.getElementById('password');
+  const ico = document.getElementById('eyeIcon');
+  inp.type      = inp.type === 'password' ? 'text' : 'password';
+  ico.className = inp.type === 'password' ? 'bi bi-eye' : 'bi bi-eye-slash';
+}
+</script>
+{% endblock %}

@@ -1,0 +1,47 @@
+<div class="tab-pane fade {% if show %}show active{% endif %}" id="{{ panel_id }}" role="tabpanel">
+  <div class="card border-0 shadow-sm" style="background:#161b22;border-radius:14px;border:1px solid #30363d;">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0" style="color:#c9d1d9;font-size:13px;">
+          <thead style="background:#21262d;">
+            <tr>
+              <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Incident No</th>
+              <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Shop</th>
+              <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Submitted By</th>
+              <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Dept</th>
+              <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Date</th>
+              <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Item</th>
+              <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Total Value</th>
+              <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Reason</th>
+              <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for inc in incidents %}
+            <tr style="border-color:#21262d;">
+              <td class="px-3 py-2" style="font-family:monospace;font-size:12px;color:#58a6ff;">{{ inc.incident_no }}</td>
+              <td class="px-3 py-2">{{ inc.shop_code }}<br><small class="text-muted">{{ inc.shop_name }}</small></td>
+              <td class="px-3 py-2">{{ inc.submitted_name|default:inc.submitted_by }}</td>
+              <td class="px-3 py-2"><span class="badge bg-secondary">{{ inc.department }}</span></td>
+              <td class="px-3 py-2 text-nowrap">{{ inc.submit_date|date:"d M Y" }}<br><small class="text-muted">{{ inc.submit_date|date:"H:i" }}</small></td>
+              <td class="px-3 py-2">{{ inc.item_name|truncatechars:28 }}</td>
+              <td class="px-3 py-2 text-nowrap">GH₵ {{ inc.total_value|floatformat:2 }}</td>
+              <td class="px-3 py-2"><span class="badge bg-secondary">{{ inc.reason }}</span></td>
+              <td class="px-3 py-2">
+                <a href="{% url 'mgmt_incident_detail' inc.pk %}"
+                   class="btn btn-sm"
+                   style="background:#21262d;color:#58a6ff;border:1px solid #30363d;font-size:16px;line-height:1;"
+                   title="View detail">
+                  👁
+                </a>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="9" class="text-center py-5 text-muted">No incidents.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,100 @@
+{% extends 'wastage/base.html' %}
+{% block title %}WIP / Semifinished Master — Cost Control Portal{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="container-fluid px-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h1><i class="bi bi-layers me-2"></i>WIP / Semifinished Items</h1>
+        <nav aria-label="breadcrumb">
+          <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+            <li class="breadcrumb-item active">WIP Master</li>
+          </ol>
+        </nav>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="container-fluid px-3 pt-3">
+
+  <!-- Search -->
+  <div class="ccp-card mb-3 animate-fade-up">
+    <div class="ccp-card-body">
+      <form method="GET" class="row g-2 align-items-end">
+        <div class="col-8 col-md-5">
+          <label class="form-label"><i class="bi bi-search me-1"></i>Search by Name or Code</label>
+          <input type="text" name="q" class="form-control" value="{{ q }}" placeholder="e.g. Bread Dough..." />
+        </div>
+        <div class="col-4 col-md-2">
+          <button type="submit" class="btn btn-melcom w-100">
+            <i class="bi bi-search me-1"></i>Search
+          </button>
+        </div>
+        {% if q %}
+        <div class="col-12 col-md-2">
+          <a href="/wip/" class="btn btn-outline-secondary w-100">
+            <i class="bi bi-x-circle me-1"></i>Clear
+          </a>
+        </div>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+
+  {% if items %}
+  <div class="ccp-card animate-fade-up">
+    <div class="ccp-card-header">
+      <i class="bi bi-table"></i> {{ items|length }} WIP / Semifinished Item{{ items|length|pluralize }}
+    </div>
+    <div class="table-responsive">
+      <table class="ccp-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Item Code</th>
+            <th>Item Name</th>
+            <th>Category</th>
+            <th>Department</th>
+            <th>UOM</th>
+            <th>Cost Price (GH₵)</th>
+            <th>Selling Price (GH₵)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr>
+            <td>{{ forloop.counter }}</td>
+            <td class="font-mono" style="font-size:12px">{{ item.item_code }}</td>
+            <td class="fw-600">{{ item.item_name }}</td>
+            <td>
+              <span class="item-cat cat-{{ item.category }} px-2 py-1 rounded">
+                {{ item.get_category_display }}
+              </span>
+            </td>
+            <td>{{ item.department|default:"—" }}</td>
+            <td class="text-muted">{{ item.uom|default:"—" }}</td>
+            <td>{{ item.cost_price|floatformat:2 }}</td>
+            <td class="fw-700" style="color:var(--melcom-red)">{{ item.selling_price|floatformat:2 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="ccp-card animate-fade-up">
+    <div class="ccp-card-body text-center py-5">
+      <i class="bi bi-inbox display-4 text-muted d-block mb-3"></i>
+      <div class="fw-700 mb-1">No WIP / Semifinished items found</div>
+      <div class="text-muted mb-3" style="font-size:13px">
+        {% if q %}No items match your search.{% else %}No WIP or Semifinished items have been added to the Item Master yet.{% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

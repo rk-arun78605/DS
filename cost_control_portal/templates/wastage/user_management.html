@@ -1,0 +1,234 @@
+{% extends 'wastage/base.html' %}
+{% block title %}User Management — Cost Control Portal{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 py-4">
+
+  <!-- Header -->
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+    <div>
+      <h4 class="fw-800 mb-0" style="color:#e6edf3;">
+        <i class="bi bi-people-fill text-danger me-2"></i>User Management
+      </h4>
+      <small class="text-muted">Create, modify and deactivate portal users</small>
+    </div>
+    <div class="d-flex gap-2 align-items-center">
+      <span class="badge bg-danger px-3 py-2" style="font-size:12px;">
+        <i class="bi bi-shield-lock me-1"></i>Management Session
+      </span>
+      <a href="/user-management/logout/" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-box-arrow-right me-1"></i>Exit
+      </a>
+    </div>
+  </div>
+
+  <!-- Flash messages -->
+  {% if messages %}
+  {% for m in messages %}
+  <div class="alert alert-{{ m.tags|default:'info' }} alert-dismissible fade show" role="alert" style="font-size:13px;">
+    {{ m }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <!-- Summary + Create Button -->
+  <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+    <div class="d-flex gap-3">
+      <span class="badge bg-secondary px-3 py-2">Total: {{ users|length }}</span>
+      <span class="badge px-3 py-2" style="background:rgba(63,185,80,.2);color:#3fb950;">
+        Active: {{ active_count }}
+      </span>
+      <span class="badge px-3 py-2" style="background:rgba(248,81,73,.2);color:#f85149;">
+        Inactive: {{ inactive_count }}
+      </span>
+    </div>
+    <button class="btn btn-melcom btn-sm px-4" data-bs-toggle="modal" data-bs-target="#createModal">
+      <i class="bi bi-person-plus me-1"></i>Create User
+    </button>
+  </div>
+
+  <!-- Search -->
+  <div class="mb-3">
+    <input type="text" id="userSearch" class="form-control form-control-sm"
+           placeholder="🔍  Search by name, emp ID, role or shop…"
+           style="max-width:360px;"
+           oninput="filterUsers(this.value)" />
+  </div>
+
+  <!-- Users Table -->
+  <div class="card border-0 shadow-sm" style="background:#161b22;border-radius:14px;border:1px solid #30363d;">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0" id="usersTable" style="color:#c9d1d9;font-size:13px;">
+          <thead style="background:#21262d;">
+            <tr>
+              <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Emp ID</th>
+              <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Name</th>
+              <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Role</th>
+              <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Shop</th>
+              <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Django User</th>
+              <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Status</th>
+              <th class="px-3 py-2" style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in users %}
+            <tr style="border-color:#21262d;" data-search="{{ u.emp_id|lower }} {{ u.emp_name|lower }} {{ u.role|lower }} {{ u.shop_code|lower }}">
+              <td class="px-3 py-2" style="font-family:monospace;color:#58a6ff;">{{ u.emp_id }}</td>
+              <td class="px-3 py-2" style="font-weight:500;color:#e6edf3;">{{ u.emp_name }}</td>
+              <td class="px-3 py-2">
+                {% if u.role == 'management' %}
+                  <span class="badge" style="background:rgba(227,24,55,.15);color:#e31837;border:1px solid rgba(227,24,55,.3);">💼 Management</span>
+                {% elif u.role == 'supervisor' or u.role == 'manager' %}
+                  <span class="badge" style="background:rgba(88,166,255,.15);color:#58a6ff;border:1px solid rgba(88,166,255,.3);">🏅 Supervisor / Manager</span>
+                {% else %}
+                  <span class="badge" style="background:rgba(139,148,158,.15);color:#8b949e;border:1px solid rgba(139,148,158,.3);">👤 Staff</span>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2">{{ u.shop_code }}<br><small class="text-muted">{{ u.shop_name|truncatechars:20 }}</small></td>
+              <td class="px-3 py-2" style="font-family:monospace;font-size:12px;color:#6e7681;">
+                {% if u.user %}{{ u.user.username }}{% else %}<span class="text-danger">not linked</span>{% endif %}
+              </td>
+              <td class="px-3 py-2">
+                {% if u.is_active %}
+                  <span class="badge" style="background:rgba(63,185,80,.15);color:#3fb950;border:1px solid rgba(63,185,80,.3);">Active</span>
+                {% else %}
+                  <span class="badge" style="background:rgba(248,81,73,.15);color:#f85149;border:1px solid rgba(248,81,73,.3);">Inactive</span>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2">
+                <div class="d-flex gap-1">
+                  <!-- Edit -->
+                  <button class="btn btn-sm"
+                          style="background:#21262d;color:#58a6ff;border:1px solid #30363d;"
+                          onclick="openEdit('{{ u.emp_id }}','{{ u.emp_name|escapejs }}','{{ u.role }}','{{ u.shop_code }}','{{ u.shop_name|escapejs }}','{{ u.department|default:''|escapejs }}','{{ u.is_active|yesno:'true,false' }}')"
+                          title="Edit">
+                    <i class="bi bi-pencil"></i>
+                  </button>
+                  <!-- Toggle active -->
+                  <form method="POST" action="/user-management/toggle/{{ u.emp_id }}/" style="display:inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm"
+                            style="background:#21262d;color:{% if u.is_active %}#f85149{% else %}#3fb950{% endif %};border:1px solid #30363d;"
+                            title="{% if u.is_active %}Deactivate{% else %}Activate{% endif %}"
+                            onclick="return confirm('{% if u.is_active %}Deactivate{% else %}Activate{% endif %} {{ u.emp_name }}?')">
+                      <i class="bi bi-{% if u.is_active %}person-x{% else %}person-check{% endif %}"></i>
+                    </button>
+                  </form>
+                  <!-- Delete -->
+                  {% if u.emp_id != 'MGMT001' %}
+                  <form method="POST" action="/user-management/delete/{{ u.emp_id }}/" style="display:inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-danger"
+                            title="Delete"
+                            onclick="return confirm('Delete {{ u.emp_name }} ({{ u.emp_id }})? This cannot be undone.')">
+                      <i class="bi bi-trash3"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7" class="text-center py-5 text-muted">No users found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Create User Modal ────────────────────────────────────────────────── -->
+<div class="modal fade" id="createModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="background:#161b22;border:1px solid #30363d;border-radius:14px;">
+      <div class="modal-header" style="border-color:#30363d;">
+        <h5 class="modal-title" style="color:#e6edf3;font-weight:700;">
+          <i class="bi bi-person-plus me-2 text-danger"></i>Create New User
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="/user-management/create/">
+        {% csrf_token %}
+        <div class="modal-body">
+          {% include "wastage/um_user_form.html" with form_data=None %}
+        </div>
+        <div class="modal-footer" style="border-color:#30363d;">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-melcom btn-sm px-4">
+            <i class="bi bi-check-lg me-1"></i>Create User
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ── Edit User Modal ──────────────────────────────────────────────────── -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="background:#161b22;border:1px solid #30363d;border-radius:14px;">
+      <div class="modal-header" style="border-color:#30363d;">
+        <h5 class="modal-title" style="color:#e6edf3;font-weight:700;">
+          <i class="bi bi-pencil-square me-2 text-primary"></i>Edit User
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" id="editForm" action="">
+        {% csrf_token %}
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label text-muted small">Employee ID</label>
+            <input type="text" id="edit_emp_id_display" class="form-control" readonly
+                   style="background:#21262d;color:#6e7681;border-color:#30363d;" />
+          </div>
+          {% include "wastage/um_user_form.html" with edit_mode=True %}
+        </div>
+        <div class="modal-footer" style="border-color:#30363d;">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm px-4">
+            <i class="bi bi-check-lg me-1"></i>Save Changes
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<style>
+  body { background:#0d1117!important; }
+  .fw-800 { font-weight:800; }
+  .table-hover tbody tr:hover td { background:#1c2128!important; }
+  .modal-body .form-label { color:#8b949e; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; }
+  .modal-body .form-control, .modal-body .form-select {
+    background:#21262d!important; border-color:#30363d!important;
+    color:#e6edf3!important; border-radius:8px;
+  }
+  .modal-body .form-control::placeholder { color:#6e7681; }
+</style>
+
+<script>
+function filterUsers(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('#usersTable tbody tr').forEach(tr => {
+    tr.style.display = (tr.dataset.search || '').includes(q) ? '' : 'none';
+  });
+}
+
+function openEdit(empId, empName, role, shopCode, shopName, dept, isActive) {
+  document.getElementById('edit_emp_id_display').value = empId;
+  document.getElementById('editForm').action = `/user-management/edit/${empId}/`;
+
+  document.getElementById('e_emp_name').value   = empName;
+  document.getElementById('e_shop_code').value  = shopCode;
+  document.getElementById('e_shop_name').value  = shopName;
+  document.getElementById('e_department').value = dept;
+  document.getElementById('e_role').value       = role;
+  document.getElementById('e_is_active').value  = isActive;
+
+  new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+</script>
+{% endblock %}

@@ -1,0 +1,1612 @@
+"""
+Century Stock Penetration Dashboard
+Real-time analytics for CENTURY brand stock positioning across shops
+"""
+
+import streamlit as st
+import streamlit.components.v1 as components
+import pandas as pd
+import psycopg2
+from psycopg2 import pool
+from psycopg2.extras import RealDictCursor, Json
+from contextlib import contextmanager
+import plotly.express as px
+import plotly.graph_objects as go
+from datetime import datetime, timedelta
+import logging
+import io
+import os
+import uuid
+import getpass
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+class Config:
+    DB_CONFIG = {
+        'host': 'localhost',
+        'port': 3307,
+        'user': 'postgres',
+        'password': 'hello',
+        'database': 'century_penetration'
+    }
+    
+    PAGE_TITLE = "Century Stock Penetration"
+    PAGE_ICON = "📊"
+    LOGO_URL = "https://melcom.com/media/favicon/stores/1/faviconn_162_x_184px.jpg"
+    
+    # Stock status colors
+    COLORS = {
+        'UnderStock': '#f5576c',
+        'OverStock': '#667eea',
+        'Balanced': '#00d2ff'
+    }
+
+
+# ============================================================
+# LOGGING
+# ============================================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# DATABASE CONNECTION
+# ============================================================
+
+@st.cache_resource
+def get_connection_pool():
+    """Create connection pool"""
+    return psycopg2.pool.SimpleConnectionPool(
+        minconn=1,
+        maxconn=5,
+        **Config.DB_CONFIG
+    )
+
+
+@contextmanager
+def get_db_connection():
+    """Get connection from pool"""
+    pool = get_connection_pool()
+    conn = pool.getconn()
+    try:
+        yield conn
+    finally:
+        pool.putconn(conn)
+
+
+# ============================================================
+# UTILITY FUNCTIONS
+# ============================================================
+
+def get_column_config():
+    """
+    Get column configuration with tooltips showing formulas for derived columns
+    """
+    return {
+        'sih': st.column_config.NumberColumn(
+            'SIH',
+            help='📦 Stock In Hand - Current shop inventory',
+            format='%d'
+        ),
+        'sit': st.column_config.NumberColumn(
+            'SIT',
+            help='🚚 Stock In Transit - Items en route to shop',
+            format='%d'
+        ),
+        'total_stock': st.column_config.NumberColumn(
+            'Total Stock',
+            help='📊 Total Stock = SIH + SIT',
+            format='%d'
+        ),
+        'sales_30d': st.column_config.NumberColumn(
+            'Last 30d',
+            help='📈 Sales (Yesterday-30 to Yesterday) - Last 30 days sales excluding today',
+            format='%d'
+        ),
+        'sales_60d': st.column_config.NumberColumn(
+            'Last 60d',
+            help='📈 Sales (Yesterday-60 to Yesterday) - Last 60 days sales excluding today',
+            format='%d'
+        ),
+        'sales_90d': st.column_config.NumberColumn(
+            'Last 90d',
+            help='📈 Sales (Yesterday-90 to Yesterday) - Last 90 days sales excluding today',
+            format='%d'
+        ),
+        'sales_365d': st.column_config.NumberColumn(
+            'Last 365d',
+            help='📈 Sales (Yesterday-365 to Yesterday) - Last year sales excluding today',
+            format='%d'
+        ),
+        'ros': st.column_config.NumberColumn(
+            'ROS',
+            help='⚡ Rate of Sales = Sales (Last 90 days) ÷ 90 - Average daily sales rate',
+            format='%.2f'
+        ),
+        'req_21_days': st.column_config.NumberColumn(
+            'Req 21 Days',
+            help='🎯 Requirement for 21 Days = ROS × 21 - Projected sales for next 3 weeks',
+            format='%.2f'
+        ),
+        'stock_variance': st.column_config.NumberColumn(
+            'Stock Variance',
+            help='📊 Stock Variance = (SIH + SIT) - Req 21 Days - If > Pack Size = OverStock, If < -Pack Size = UnderStock',
+            format='%.2f'
+        ),
+        'pack_size': st.column_config.NumberColumn(
+            'Pack Size',
+            help='📦 Pack Size - Tolerance threshold for stock status classification',
+            format='%d'
+        ),
+        'days_of_stock': st.column_config.NumberColumn(
+            'Days of Stock',
+            help='📅 Days of Stock = (SIH + SIT) ÷ ROS - How many days current stock will last',
+            format='%.1f'
+        ),
+        'stock_status': st.column_config.TextColumn(
+            'Status',
+            help='⚠️ Stock Status: UnderStock (variance < -pack_size), OverStock (variance > pack_size), Balanced (within pack_size range)'
+        ),
+        'min_nu': st.column_config.NumberColumn(
+            'Min',
+            help='📉 Minimum Stock Level - Reorder point',
+            format='%d'
+        ),
+        'max_nu': st.column_config.NumberColumn(
+            'Max',
+            help='📈 Maximum Stock Level - Upper limit',
+            format='%d'
+        ),
+        'reorder_qty': st.column_config.NumberColumn(
+            'Reorder Qty',
+            help='🔄 Reorder Quantity - Order quantity when below min',
+            format='%d'
+        ),
+        'selling_price': st.column_config.NumberColumn(
+            'Price',
+            help='💰 Selling Price',
+            format='%.2f'
+        ),
+        'value_30d': st.column_config.NumberColumn(
+            'Value 30d',
+            help='💵 Sales Value (Last 30 days) = Sum of (Quantity × Price)',
+            format='%.2f'
+        ),
+        'value_60d': st.column_config.NumberColumn(
+            'Value 60d',
+            help='💵 Sales Value (Last 60 days) = Sum of (Quantity × Price)',
+            format='%.2f'
+        ),
+        'value_90d': st.column_config.NumberColumn(
+            'Value 90d',
+            help='💵 Sales Value (Last 90 days) = Sum of (Quantity × Price)',
+            format='%.2f'
+        ),
+        'value_365d': st.column_config.NumberColumn(
+            'Value 365d',
+            help='💵 Sales Value (Last 365 days) = Sum of (Quantity × Price)',
+            format='%.2f'
+        )
+    }
+
+
+def get_ga_measurement_id() -> str:
+        """Fetch GA4 Measurement ID from Streamlit secrets or environment."""
+        try:
+                analytics_cfg = st.secrets.get('analytics', {})
+                measurement_id = analytics_cfg.get('ga_measurement_id', '')
+                if measurement_id:
+                        return measurement_id
+        except Exception:
+                pass
+        return os.getenv('GA_MEASUREMENT_ID', '').strip()
+
+
+def inject_ga_tracking(measurement_id: str, app_user_id: str = ''):
+        """Inject GA4 script and capture browser + anonymized client IP.
+
+        Notes:
+        - Browser login IDs (Chrome/Firefox account email) are not accessible to web apps.
+        - Sends anonymized IP and browser family as custom event params.
+        """
+        if not measurement_id:
+                return
+
+        safe_user_id = (app_user_id or '').replace("'", "")
+        components.html(
+                f"""
+                <script async src="https://www.googletagmanager.com/gtag/js?id={measurement_id}"></script>
+                <script>
+                    window.dataLayer = window.dataLayer || [];
+                    function gtag(){{dataLayer.push(arguments);}}
+                    gtag('js', new Date());
+                    gtag('config', '{measurement_id}', {{
+                        'anonymize_ip': true,
+                        'send_page_view': true
+                    }});
+
+                    (async function() {{
+                        const userAgent = navigator.userAgent || '';
+                        let browser = 'Other';
+                        if (/Edg\//.test(userAgent)) browser = 'Edge';
+                        else if (/Chrome\//.test(userAgent) && !/Edg\//.test(userAgent)) browser = 'Chrome';
+                        else if (/Firefox\//.test(userAgent)) browser = 'Firefox';
+                        else if (/Safari\//.test(userAgent) && !/Chrome\//.test(userAgent)) browser = 'Safari';
+
+                        let anonymizedIp = 'unknown';
+                        try {{
+                            const response = await fetch('https://api.ipify.org?format=json');
+                            const data = await response.json();
+                            const ip = (data && data.ip) ? data.ip : '';
+                            if (ip.includes('.')) {{
+                                const parts = ip.split('.');
+                                if (parts.length === 4) anonymizedIp = `${{parts[0]}}.${{parts[1]}}.${{parts[2]}}.0`;
+                            }} else if (ip.includes(':')) {{
+                                const segments = ip.split(':').slice(0, 4);
+                                anonymizedIp = segments.join(':') + '::';
+                            }}
+                        }} catch (e) {{}}
+
+                        gtag('event', 'century_dashboard_session_start', {{
+                            browser_family: browser,
+                            anonymized_ip: anonymizedIp,
+                            app_user_id: '{safe_user_id}'
+                        }});
+                    }})();
+                </script>
+                """,
+                height=0,
+                width=0,
+        )
+
+
+def ensure_user_events_table():
+    """Create usage-events table for management reporting."""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS century_user_events (
+                id BIGSERIAL PRIMARY KEY,
+                event_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                event_date DATE,
+                event_clock TIME,
+                event_name VARCHAR(100) NOT NULL,
+                session_id VARCHAR(64),
+                app_user_id VARCHAR(100),
+                system_login_id VARCHAR(150),
+                ip_address VARCHAR(64),
+                browser VARCHAR(50),
+                user_agent TEXT,
+                page_name VARCHAR(100) DEFAULT 'Century Stock Penetration',
+                event_details JSONB
+            )
+        """)
+        cur.execute("""
+            ALTER TABLE century_user_events
+            ADD COLUMN IF NOT EXISTS event_date DATE
+        """)
+        cur.execute("""
+            ALTER TABLE century_user_events
+            ADD COLUMN IF NOT EXISTS event_clock TIME
+        """)
+        cur.execute("""
+            ALTER TABLE century_user_events
+            ADD COLUMN IF NOT EXISTS system_login_id VARCHAR(150)
+        """)
+        cur.execute("""
+            UPDATE century_user_events
+            SET event_date = COALESCE(event_date, event_time::date),
+                event_clock = COALESCE(event_clock, event_time::time)
+            WHERE event_date IS NULL OR event_clock IS NULL
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_century_user_events_time
+            ON century_user_events(event_time DESC)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_century_user_events_name
+            ON century_user_events(event_name)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_century_user_events_user
+            ON century_user_events(app_user_id)
+        """)
+        conn.commit()
+        cur.close()
+
+
+def get_client_context() -> dict:
+    """Capture request metadata when available from Streamlit context."""
+    headers = {}
+    try:
+        headers_obj = getattr(st, 'context', None)
+        if headers_obj and hasattr(headers_obj, 'headers') and headers_obj.headers:
+            headers = dict(headers_obj.headers)
+    except Exception:
+        headers = {}
+
+    user_agent = headers.get('User-Agent', '')
+    browser = 'Other'
+    ua = user_agent.lower()
+    if 'edg/' in ua:
+        browser = 'Edge'
+    elif 'chrome/' in ua and 'edg/' not in ua:
+        browser = 'Chrome'
+    elif 'firefox/' in ua:
+        browser = 'Firefox'
+    elif 'safari/' in ua and 'chrome/' not in ua:
+        browser = 'Safari'
+
+    ip = headers.get('X-Forwarded-For', '') or headers.get('X-Real-Ip', '')
+    if ',' in ip:
+        ip = ip.split(',')[0].strip()
+
+    auth_login = (
+        headers.get('Remote-User', '')
+        or headers.get('X-Remote-User', '')
+        or headers.get('X-Authenticated-User', '')
+    )
+
+    return {
+        'ip_address': ip,
+        'browser': browser,
+        'user_agent': user_agent,
+        'auth_login': auth_login
+    }
+
+
+def get_app_user_id() -> str:
+    """Get application user id from session state when available."""
+    app_user = st.session_state.get('user')
+    if isinstance(app_user, dict):
+        return str(app_user.get('employee_id') or app_user.get('username') or '')
+    return ''
+
+
+def get_system_login_id() -> str:
+    captured_login = str(st.session_state.get('captured_login_id', '')).strip()
+    if captured_login:
+        return captured_login
+
+    context = get_client_context()
+    if context.get('auth_login'):
+        return str(context['auth_login'])
+
+    app_user_id = get_app_user_id()
+    if app_user_id:
+        return app_user_id
+
+    return ''
+
+
+def ensure_login_id_captured() -> bool:
+    """Ensure each session has a user-specific login id captured."""
+    if 'captured_login_id' not in st.session_state:
+        st.session_state.captured_login_id = ''
+
+    # Auto-seed from authenticated headers/app user when available
+    if not st.session_state.captured_login_id:
+        auto_login = ''
+        context = get_client_context()
+        if context.get('auth_login'):
+            auto_login = str(context['auth_login']).strip()
+        elif get_app_user_id():
+            auto_login = get_app_user_id().strip()
+
+        if auto_login:
+            st.session_state.captured_login_id = auto_login
+
+    login_input = st.text_input(
+        "🆔 System Login ID (Required)",
+        value=st.session_state.captured_login_id,
+        placeholder="Example: MIS-ARUN\\director cid",
+        help="Enter your system login so management reports can identify who opened the dashboard.",
+        key='captured_login_id_input'
+    )
+
+    if st.button("✅ Save Login ID", key="save_login_id_btn", use_container_width=True):
+        st.session_state.captured_login_id = login_input.strip()
+        if st.session_state.captured_login_id:
+            log_user_event('login_id_saved', {'system_login_id': st.session_state.captured_login_id})
+
+    # Keep latest typed value in session
+    if login_input.strip():
+        st.session_state.captured_login_id = login_input.strip()
+
+    if st.session_state.captured_login_id:
+        st.success(f"Tracking as: {st.session_state.captured_login_id}")
+        return True
+
+    st.warning("Please enter your System Login ID to continue.")
+    return False
+
+
+def log_user_event(event_name: str, event_details: dict | None = None):
+    """Insert one user event row into century_user_events."""
+    try:
+        ensure_user_events_table()
+        if 'event_session_id' not in st.session_state:
+            st.session_state.event_session_id = uuid.uuid4().hex
+
+        context = get_client_context()
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO century_user_events
+                (event_time, event_date, event_clock, event_name, session_id, app_user_id, system_login_id, ip_address, browser, user_agent, event_details)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    datetime.now(),
+                    datetime.now().date(),
+                    datetime.now().time().replace(microsecond=0),
+                    event_name,
+                    st.session_state.event_session_id,
+                    get_app_user_id(),
+                    get_system_login_id(),
+                    context.get('ip_address', ''),
+                    context.get('browser', 'Other'),
+                    context.get('user_agent', ''),
+                    Json(event_details or {})
+                )
+            )
+            conn.commit()
+            cur.close()
+    except Exception as e:
+        logger.warning(f"Event logging failed for '{event_name}': {e}")
+
+
+def get_user_events_report(days_back: int = 30) -> pd.DataFrame:
+    """Detailed events report for management export."""
+    ensure_user_events_table()
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(
+            """
+            SELECT
+                event_time,
+                event_date,
+                event_clock,
+                event_name,
+                COALESCE(NULLIF(app_user_id, ''), 'anonymous') AS app_user_id,
+                COALESCE(NULLIF(system_login_id, ''), 'unknown') AS system_login_id,
+                COALESCE(NULLIF(ip_address, ''), 'unknown') AS ip_address,
+                browser,
+                event_details
+            FROM century_user_events
+            WHERE event_time >= NOW() - (%s || ' days')::INTERVAL
+            ORDER BY event_time DESC
+            """,
+            (str(days_back),)
+        )
+        rows = cur.fetchall()
+        cur.close()
+        return pd.DataFrame(rows)
+
+
+def get_user_events_summary(days_back: int = 30) -> dict:
+    """Summary metrics for management usage report."""
+    ensure_user_events_table()
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(
+            """
+            SELECT
+                COUNT(*) AS total_events,
+                COUNT(DISTINCT session_id) AS total_sessions,
+                COUNT(DISTINCT NULLIF(app_user_id, '')) AS known_users,
+                COUNT(DISTINCT COALESCE(NULLIF(ip_address, ''), 'unknown')) AS distinct_ips
+            FROM century_user_events
+            WHERE event_time >= NOW() - (%s || ' days')::INTERVAL
+            """,
+            (str(days_back),)
+        )
+        summary = dict(cur.fetchone())
+        cur.close()
+        return summary
+
+
+# ============================================================
+# DATA LOADING FUNCTIONS
+# ============================================================
+
+@st.cache_data(ttl=600)
+def get_overview_metrics(status_threshold: int = 10, shop_filter=None):
+    """Get high-level overview metrics with configurable threshold"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        where_clause = "WHERE shop_code = %s" if shop_filter else ""
+        params = [status_threshold, status_threshold, status_threshold]
+        if shop_filter:
+            params.extend([shop_filter, shop_filter])
+        query = """
+            WITH item_status_summary AS (
+                -- For each item, calculate percentage of shops in each status
+                SELECT 
+                    item_code,
+                    COUNT(*) as total_shops_for_item,
+                    SUM(CASE WHEN stock_status = 'UnderStock' THEN 1 ELSE 0 END) as understock_count,
+                    SUM(CASE WHEN stock_status = 'OverStock' THEN 1 ELSE 0 END) as overstock_count,
+                    SUM(CASE WHEN stock_status = 'Balanced' THEN 1 ELSE 0 END) as balanced_count,
+                    -- Calculate percentages
+                    ROUND(100.0 * SUM(CASE WHEN stock_status = 'UnderStock' THEN 1 ELSE 0 END) / COUNT(*), 1) as understock_pct,
+                    ROUND(100.0 * SUM(CASE WHEN stock_status = 'OverStock' THEN 1 ELSE 0 END) / COUNT(*), 1) as overstock_pct,
+                    ROUND(100.0 * SUM(CASE WHEN stock_status = 'Balanced' THEN 1 ELSE 0 END) / COUNT(*), 1) as balanced_pct
+                FROM mv_century_penetration
+                {where_clause}
+                GROUP BY item_code
+            ),
+            item_dominant_status AS (
+                -- Classify item based on configurable threshold
+                SELECT 
+                    item_code,
+                    CASE 
+                        WHEN understock_pct >= %s THEN 'UnderStock'
+                        WHEN overstock_pct >= %s THEN 'OverStock'
+                        WHEN balanced_pct >= %s THEN 'Balanced'
+                        ELSE 'Mixed' -- Items with no dominant status
+                    END as dominant_status
+                FROM item_status_summary
+            ),
+            overall_stats AS (
+                SELECT 
+                    COUNT(DISTINCT item_code) as total_items,
+                    ROUND(SUM(sih), 0) as total_sih,
+                    ROUND(SUM(sit), 0) as total_sit,
+                    ROUND(SUM(req_21_days), 0) as total_requirement,
+                    ROUND(AVG(ros), 2) as avg_ros,
+                    COUNT(DISTINCT shop_code) as total_shops
+                FROM mv_century_penetration
+                {where_clause}
+            )
+            SELECT 
+                o.total_items,
+                o.total_shops,
+                SUM(CASE WHEN ids.dominant_status = 'UnderStock' THEN 1 ELSE 0 END) as understock_items,
+                SUM(CASE WHEN ids.dominant_status = 'OverStock' THEN 1 ELSE 0 END) as overstock_items,
+                SUM(CASE WHEN ids.dominant_status = 'Balanced' THEN 1 ELSE 0 END) as balanced_items,
+                SUM(CASE WHEN ids.dominant_status = 'Mixed' THEN 1 ELSE 0 END) as mixed_items,
+                o.total_sih,
+                o.total_sit,
+                o.total_requirement,
+                o.avg_ros
+            FROM item_dominant_status ids
+            CROSS JOIN overall_stats o
+            GROUP BY o.total_items, o.total_shops, o.total_sih, o.total_sit, o.total_requirement, o.avg_ros
+        """.format(where_clause=where_clause)
+        cursor.execute(query, tuple(params))
+        return dict(cursor.fetchone())
+
+
+@st.cache_data(ttl=600)
+def get_shop_wise_summary(shop_filter=None):
+    """Get shop-wise stock status summary"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        where_clause = "WHERE shop_code = %s" if shop_filter else ""
+        query = """
+            SELECT 
+                shop_code,
+                COUNT(*) as total_items,
+                SUM(CASE WHEN stock_status = 'UnderStock' THEN 1 ELSE 0 END) as understock,
+                SUM(CASE WHEN stock_status = 'OverStock' THEN 1 ELSE 0 END) as overstock,
+                SUM(CASE WHEN stock_status = 'Balanced' THEN 1 ELSE 0 END) as balanced,
+                ROUND(SUM(sih), 0) as total_sih,
+                ROUND(SUM(sit), 0) as total_sit,
+                ROUND(SUM(req_21_days), 0) as total_requirement,
+                ROUND(AVG(ros), 2) as avg_ros
+            FROM mv_century_penetration
+            {where_clause}
+            GROUP BY shop_code
+            ORDER BY understock DESC
+        """.format(where_clause=where_clause)
+        if shop_filter:
+            cursor.execute(query, (shop_filter,))
+        else:
+            cursor.execute(query)
+        return pd.DataFrame(cursor.fetchall())
+
+
+@st.cache_data(ttl=600)
+def get_latest_whstock_upload_date():
+    """Get latest whstock upload date once per cache window."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT MAX(upload_date) as max_date FROM whstock")
+        max_date_row = cursor.fetchone()
+        return max_date_row['max_date'] if max_date_row and max_date_row['max_date'] else None
+
+
+@st.cache_data(ttl=600)
+def get_understock_items(limit=2000, shop_filter=None):
+    """Get top understock items with warehouse stock"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        max_date = get_latest_whstock_upload_date()
+        
+        shop_clause = "AND m.shop_code = %s" if shop_filter else ""
+        query = f"""
+            WITH latest_whstock AS (
+                SELECT DISTINCT ON (vc_item_code, wh_code)
+                    vc_item_code,
+                    wh_code,
+                    wh_name,
+                    balance_qty,
+                    upload_date
+                FROM whstock
+                WHERE upload_date = %s
+                ORDER BY vc_item_code, wh_code, upload_date DESC
+            )
+            SELECT 
+                m.item_code,
+                m.item_name,
+                m.shop_code,
+                m.dept,
+                ROUND(m.sih, 0) as sih,
+                ROUND(m.sit, 0) as sit,
+                ROUND(m.total_stock, 0) as total_stock,
+                ROUND(m.sales_30d, 0) as "Last 30d",
+                ROUND(m.sales_60d, 0) as "Last 60d",
+                ROUND(m.sales_90d, 0) as "Last 90d",
+                ROUND(m.ros, 2) as ros,
+                ROUND(m.req_21_days, 0) as req_21_days,
+                ROUND(m.stock_variance, 0) as stock_variance,
+                ROUND(m.pack_size, 0) as pack_size,
+                ROUND(m.days_of_stock, 1) as days_of_stock,
+                COALESCE(SUM(w.balance_qty), 0) as total_wh_stock,
+                COALESCE(SUM(CASE WHEN w.wh_code = 'TS' THEN w.balance_qty ELSE 0 END), 0) as wh_tema,
+                COALESCE(SUM(CASE WHEN w.wh_code = 'KA' THEN w.balance_qty ELSE 0 END), 0) as wh_kumasi
+            FROM mv_century_penetration m
+            LEFT JOIN latest_whstock w ON m.item_code = w.vc_item_code
+            WHERE m.stock_status = 'UnderStock'
+              {shop_clause}
+            GROUP BY m.item_code, m.item_name, m.shop_code, m.dept, m.sih, m.sit, m.total_stock,
+                     m.sales_30d, m.sales_60d, m.sales_90d, m.ros, m.req_21_days, 
+                     m.stock_variance, m.pack_size, m.days_of_stock
+            ORDER BY m.stock_variance ASC
+            LIMIT {limit}
+        """
+        if shop_filter:
+            cursor.execute(query, (max_date, shop_filter))
+        else:
+            cursor.execute(query, (max_date,))
+        return pd.DataFrame(cursor.fetchall())
+
+
+@st.cache_data(ttl=600)
+def get_overstock_items(limit=50, shop_filter=None):
+    """Get top overstock items with warehouse stock"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        max_date = get_latest_whstock_upload_date()
+        
+        shop_clause = "AND m.shop_code = %s" if shop_filter else ""
+        query = f"""
+            WITH latest_whstock AS (
+                SELECT DISTINCT ON (vc_item_code, wh_code)
+                    vc_item_code,
+                    wh_code,
+                    wh_name,
+                    balance_qty,
+                    upload_date
+                FROM whstock
+                WHERE upload_date = %s
+                ORDER BY vc_item_code, wh_code, upload_date DESC
+            )
+            SELECT 
+                m.item_code,
+                m.item_name,
+                m.shop_code,
+                m.dept,
+                ROUND(m.sih, 0) as sih,
+                ROUND(m.sit, 0) as sit,
+                ROUND(m.total_stock, 0) as total_stock,
+                ROUND(m.sales_30d, 0) as "Last 30d",
+                ROUND(m.sales_60d, 0) as "Last 60d",
+                ROUND(m.sales_90d, 0) as "Last 90d",
+                ROUND(m.ros, 2) as ros,
+                ROUND(m.req_21_days, 0) as req_21_days,
+                ROUND(m.stock_variance, 0) as stock_variance,
+                ROUND(m.pack_size, 0) as pack_size,
+                ROUND(m.days_of_stock, 1) as days_of_stock,
+                COALESCE(SUM(w.balance_qty), 0) as total_wh_stock,
+                COALESCE(SUM(CASE WHEN w.wh_code = 'TS' THEN w.balance_qty ELSE 0 END), 0) as wh_tema,
+                COALESCE(SUM(CASE WHEN w.wh_code = 'KA' THEN w.balance_qty ELSE 0 END), 0) as wh_kumasi
+            FROM mv_century_penetration m
+            LEFT JOIN latest_whstock w ON m.item_code = w.vc_item_code
+            WHERE m.stock_status = 'OverStock'
+              {shop_clause}
+            GROUP BY m.item_code, m.item_name, m.shop_code, m.dept, m.sih, m.sit, m.total_stock,
+                     m.sales_30d, m.sales_60d, m.sales_90d, m.ros, m.req_21_days, 
+                     m.stock_variance, m.pack_size, m.days_of_stock
+            ORDER BY m.stock_variance DESC
+            LIMIT {limit}
+        """
+        if shop_filter:
+            cursor.execute(query, (max_date, shop_filter))
+        else:
+            cursor.execute(query, (max_date,))
+        return pd.DataFrame(cursor.fetchall())
+
+
+@st.cache_data(ttl=600)
+def get_department_analysis(shop_filter=None):
+    """Get department-wise analysis"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        where_clause = "WHERE shop_code = %s" if shop_filter else ""
+        query = """
+            SELECT 
+                dept,
+                COUNT(DISTINCT item_code) as total_items,
+                SUM(CASE WHEN stock_status = 'UnderStock' THEN 1 ELSE 0 END) as understock,
+                SUM(CASE WHEN stock_status = 'OverStock' THEN 1 ELSE 0 END) as overstock,
+                ROUND(SUM(sih), 0) as total_sih,
+                ROUND(SUM(sit), 0) as total_sit,
+                ROUND(SUM(req_21_days), 0) as total_requirement,
+                ROUND(AVG(ros), 2) as avg_ros
+            FROM mv_century_penetration
+            {where_clause}
+            GROUP BY dept
+            ORDER BY understock DESC
+        """.format(where_clause=where_clause)
+        if shop_filter:
+            cursor.execute(query, (shop_filter,))
+        else:
+            cursor.execute(query)
+        return pd.DataFrame(cursor.fetchall())
+
+
+@st.cache_data(ttl=600)
+def get_critical_items(shop_filter=None):
+    """Get critical items (no stock, high demand) with warehouse stock"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        max_date = get_latest_whstock_upload_date()
+        
+        shop_clause = "AND m.shop_code = %s" if shop_filter else ""
+        query = """
+            WITH latest_whstock AS (
+                SELECT DISTINCT ON (vc_item_code, wh_code)
+                    vc_item_code,
+                    wh_code,
+                    wh_name,
+                    balance_qty,
+                    upload_date
+                FROM whstock
+                WHERE upload_date = %s
+                ORDER BY vc_item_code, wh_code, upload_date DESC
+            )
+            SELECT 
+                m.item_code,
+                m.item_name,
+                m.shop_code,
+                m.dept,
+                ROUND(m.sih, 0) as sih,
+                ROUND(m.sit, 0) as sit,
+                ROUND(m.sales_30d, 0) as "Last 30d",
+                ROUND(m.sales_60d, 0) as "Last 60d",
+                ROUND(m.sales_90d, 0) as "Last 90d",
+                ROUND(m.ros, 2) as ros,
+                ROUND(m.req_21_days, 0) as req_21_days,
+                ROUND(m.pack_size, 0) as pack_size,
+                COALESCE(SUM(w.balance_qty), 0) as total_wh_stock,
+                COALESCE(SUM(CASE WHEN w.wh_code = 'TS' THEN w.balance_qty ELSE 0 END), 0) as wh_tema,
+                COALESCE(SUM(CASE WHEN w.wh_code = 'KA' THEN w.balance_qty ELSE 0 END), 0) as wh_kumasi
+            FROM mv_century_penetration m
+            LEFT JOIN latest_whstock w ON m.item_code = w.vc_item_code
+            WHERE m.total_stock = 0
+              AND m.ros > 1
+              {shop_clause}
+            GROUP BY m.item_code, m.item_name, m.shop_code, m.dept, m.sih, m.sit,
+                     m.sales_30d, m.sales_60d, m.sales_90d, m.ros, m.req_21_days, m.pack_size
+            ORDER BY m.ros DESC
+            LIMIT 50
+        """.format(shop_clause=shop_clause)
+        if shop_filter:
+            cursor.execute(query, (max_date, shop_filter))
+        else:
+            cursor.execute(query, (max_date,))
+        return pd.DataFrame(cursor.fetchall())
+
+
+@st.cache_data(ttl=600)
+def get_slow_moving_items(shop_filter=None):
+    """Get slow moving items with warehouse stock"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        max_date = get_latest_whstock_upload_date()
+        
+        shop_clause = "AND m.shop_code = %s" if shop_filter else ""
+        query = """
+            WITH latest_whstock AS (
+                SELECT DISTINCT ON (vc_item_code, wh_code)
+                    vc_item_code,
+                    wh_code,
+                    wh_name,
+                    balance_qty,
+                    upload_date
+                FROM whstock
+                WHERE upload_date = %s
+                ORDER BY vc_item_code, wh_code, upload_date DESC
+            )
+            SELECT 
+                m.item_code,
+                m.item_name,
+                m.shop_code,
+                m.dept,
+                ROUND(m.sih, 0) as sih,
+                ROUND(m.sit, 0) as sit,
+                ROUND(m.sales_30d, 0) as "Last 30d",
+                ROUND(m.sales_60d, 0) as "Last 60d",
+                ROUND(m.sales_90d, 0) as "Last 90d",
+                ROUND(m.ros, 2) as ros,
+                ROUND(m.pack_size, 0) as pack_size,
+                ROUND(m.days_of_stock, 1) as days_of_stock,
+                m.last_sale_date,
+                COALESCE(SUM(w.balance_qty), 0) as total_wh_stock,
+                COALESCE(SUM(CASE WHEN w.wh_code = 'TS' THEN w.balance_qty ELSE 0 END), 0) as wh_tema,
+                COALESCE(SUM(CASE WHEN w.wh_code = 'KA' THEN w.balance_qty ELSE 0 END), 0) as wh_kumasi
+            FROM mv_century_penetration m
+            LEFT JOIN latest_whstock w ON m.item_code = w.vc_item_code
+            WHERE m.ros < 0.5
+              AND m.sih > 0
+              {shop_clause}
+            GROUP BY m.item_code, m.item_name, m.shop_code, m.dept, m.sih, m.sit,
+                     m.sales_30d, m.sales_60d, m.sales_90d, m.ros, m.pack_size, 
+                     m.days_of_stock, m.last_sale_date
+            ORDER BY m.ros ASC, m.days_of_stock DESC
+            LIMIT 50
+        """.format(shop_clause=shop_clause)
+        if shop_filter:
+            cursor.execute(query, (max_date, shop_filter))
+        else:
+            cursor.execute(query, (max_date,))
+        return pd.DataFrame(cursor.fetchall())
+
+
+@st.cache_data(ttl=600)
+def get_available_shops(view_name=None, search_term=None):
+    """Get available shops for selected view in alphabetical order"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+
+        where_clause = "WHERE shop_code IS NOT NULL"
+        params = []
+
+        view_key = (view_name or "").lower()
+
+        if "understock" in view_key:
+            where_clause += " AND stock_status = 'UnderStock'"
+        elif "overstock" in view_key:
+            where_clause += " AND stock_status = 'OverStock'"
+        elif "critical" in view_key:
+            where_clause += " AND total_stock = 0 AND ros > 1"
+        elif "slow moving" in view_key:
+            where_clause += " AND ros < 0.5 AND sih > 0"
+
+        if search_term:
+            where_clause += " AND (LOWER(item_code) LIKE LOWER(%s) OR LOWER(item_name) LIKE LOWER(%s))"
+            like_term = f"%{search_term}%"
+            params.extend([like_term, like_term])
+
+        query = f"""
+            SELECT DISTINCT shop_code
+            FROM mv_century_penetration
+            {where_clause}
+            ORDER BY shop_code
+        """
+        cursor.execute(query, tuple(params))
+        return [row[0] for row in cursor.fetchall()]
+
+
+@st.cache_data(ttl=600)
+def search_items(search_term, shop_filter=None):
+    """Search items by code or name"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        query = """
+            SELECT 
+                item_code,
+                item_name,
+                shop_code,
+                dept,
+                stock_status,
+                ROUND(sih, 0) as sih,
+                ROUND(sit, 0) as sit,
+                ROUND(total_stock, 0) as total_stock,
+                ROUND(sales_30d, 0) as "Last 30d",
+                ROUND(sales_60d, 0) as "Last 60d",
+                ROUND(sales_90d, 0) as "Last 90d",
+                ROUND(ros, 2) as ros,
+                ROUND(req_21_days, 0) as req_21_days,
+                ROUND(stock_variance, 0) as stock_variance,
+                ROUND(pack_size, 0) as pack_size,
+                ROUND(days_of_stock, 1) as days_of_stock,
+                ROUND(selling_price, 2) as selling_price
+            FROM mv_century_penetration
+                 WHERE (LOWER(item_code) LIKE LOWER(%s)
+                     OR LOWER(item_name) LIKE LOWER(%s))
+                AND (%s IS NULL OR shop_code = %s)
+            ORDER BY ros DESC
+            LIMIT 100
+        """
+        like_term = f"%{search_term}%"
+        cursor.execute(query, (like_term, like_term, shop_filter, shop_filter))
+        return pd.DataFrame(cursor.fetchall())
+
+
+# ============================================================
+# MAIN APPLICATION
+# ============================================================
+
+def main():
+    # PAGE CONFIGURATION
+    st.set_page_config(
+        page_title=Config.PAGE_TITLE,
+        page_icon=Config.PAGE_ICON,
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    
+    # Initialize session state for tab management
+    if 'active_tab' not in st.session_state:
+        st.session_state.active_tab = 0
+
+    if 'event_session_id' not in st.session_state:
+        st.session_state.event_session_id = uuid.uuid4().hex
+
+    # Always ensure schema is current (safe and idempotent)
+    ensure_user_events_table()
+
+    # Initialize GA tracking once per session
+    if 'ga_initialized' not in st.session_state:
+        st.session_state.ga_initialized = False
+    if not st.session_state.ga_initialized:
+        ga_measurement_id = get_ga_measurement_id()
+        app_user = st.session_state.get('user')
+        app_user_id = ''
+        if isinstance(app_user, dict):
+            app_user_id = str(app_user.get('employee_id') or app_user.get('username') or '')
+        inject_ga_tracking(ga_measurement_id, app_user_id=app_user_id)
+        st.session_state.ga_initialized = True
+    
+    # CUSTOM CSS
+    st.markdown("""
+        <style>
+        .main-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 1.5rem;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .metric-card {
+            background: rgba(255,255,255,0.05);
+            padding: 1rem;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    # HEADER
+    st.markdown(f"""
+    <div class="main-header">
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <img src="{Config.LOGO_URL}" style="width: 50px; height: 50px; border-radius: 8px;">
+            <div>
+                <h1 style="margin: 0;"> Century Stock Penetration Dashboard</h1>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    tab_options = [
+        "🏪 Shop Analysis",
+        "⚠️ UnderStock Items",
+        "📦 OverStock Items",
+        "🚨 Critical Items",
+        "🐌 Slow Moving",
+        "📂 Department Analysis"
+    ]
+
+    # SIDEBAR
+    with st.sidebar:
+        st.markdown("### 👤 User Identity")
+        login_ready = ensure_login_id_captured()
+        st.markdown("---")
+
+        st.markdown("### 🔍 Filters & Search")
+        
+        # Refresh button
+        if st.button("🔄 Refresh Data", use_container_width=True):
+            log_user_event('refresh_clicked')
+            st.cache_data.clear()
+            st.rerun()
+        
+        st.markdown("---")
+        
+        # Threshold control
+        st.markdown("### ⚙️ Settings")
+        status_threshold = st.slider(
+            "Status Classification Threshold",
+            min_value=0,
+            max_value=100,
+            value=10,
+            step=5,
+            help="Minimum % of shops required to classify an item's dominant status"
+        )
+        st.caption(f"Items are classified as UnderStock/OverStock/Balanced if they have that status in ≥{status_threshold}% of shops")
+        
+        st.markdown("---")
+        
+        # Search
+        search_term = st.text_input("🔎 Search Item", placeholder="Item code or name...")
+
+        st.markdown("---")
+        st.markdown("### ℹ️ About")
+        st.info("""
+        **Century Brand Stock Analysis**
+        
+        - 📦 Stock levels (SIH + SIT)
+        - 📈 Sales trends (30/60/90/365 days)
+        - ⚡ Rate of Sales (ROS)
+        - 🎯 21-day requirements
+        - ⚠️ Stock status alerts
+        """)
+
+        st.markdown("---")
+        with st.expander("📊 Management Usage Report", expanded=False):
+            report_days = st.slider(
+                "Report period (days)",
+                min_value=1,
+                max_value=90,
+                value=30,
+                step=1,
+                key='events_report_days'
+            )
+
+            summary = get_user_events_summary(report_days)
+            c1, c2 = st.columns(2)
+            with c1:
+                st.metric("Events", f"{summary.get('total_events', 0):,}")
+                st.metric("Sessions", f"{summary.get('total_sessions', 0):,}")
+            with c2:
+                st.metric("Known Users", f"{summary.get('known_users', 0):,}")
+                st.metric("Distinct IPs", f"{summary.get('distinct_ips', 0):,}")
+
+            events_df = get_user_events_report(report_days)
+            st.caption(f"Showing last {report_days} days")
+            st.dataframe(events_df.head(200), use_container_width=True, height=220)
+
+            if not events_df.empty:
+                report_csv = events_df.to_csv(index=False)
+                if st.download_button(
+                    label="📥 Download Full Usage Report",
+                    data=report_csv,
+                    file_name=f"century_usage_report_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    key='download_usage_report_btn'
+                ):
+                    log_user_event('usage_report_downloaded', {'days': report_days, 'rows': len(events_df)})
+
+    if not login_ready:
+        st.warning("⚠️ Please enter your System Login ID in the sidebar to enable user-level tracking.")
+
+    if 'app_open_logged' not in st.session_state:
+        log_user_event('app_open', {
+            'page': 'century_dashboard',
+            'login_ready': bool(login_ready)
+        })
+        st.session_state.app_open_logged = True
+
+    def render_tab_shop_filter(view_name: str, key_suffix: str, search_text: str | None = None):
+        st.markdown("#### 🏪 Shop Code Filter")
+        try:
+            shops_for_view = get_available_shops(
+                view_name=view_name,
+                search_term=search_text if search_text else None
+            )
+        except Exception:
+            shops_for_view = []
+
+        shop_options = ["All Shops"] + sorted([s for s in shops_for_view if s])
+        selected_shop = st.selectbox(
+            "Shop Code",
+            options=shop_options,
+            index=0,
+            key=f"shop_code_filter_{key_suffix}",
+            help=f"Shops shown are only from: {view_name}"
+        )
+        return None if selected_shop == "All Shops" else selected_shop
+    
+    # MAIN CONTENT
+    if search_term:
+        if st.session_state.get('last_search_term') != search_term:
+            log_user_event('search_performed', {'search_term': search_term})
+            st.session_state.last_search_term = search_term
+        # SEARCH RESULTS
+        st.markdown("### 🔍 Search Results")
+        shop_filter_value = render_tab_shop_filter("🔍 Search Results", "search", search_term)
+        search_results = search_items(search_term, shop_filter=shop_filter_value)
+        
+        if not search_results.empty:
+            st.dataframe(
+                search_results,
+                use_container_width=True,
+                height=500,
+                column_config=get_column_config()
+            )
+            
+            # Download button
+            try:
+                # More robust CSV conversion: convert to string representation first
+                csv_buffer = io.StringIO()
+                for idx, row in search_results.iterrows():
+                    if idx == 0:
+                        csv_buffer.write(','.join(str(col) for col in search_results.columns) + '\n')
+                    csv_buffer.write(','.join(f'"{str(val).replace(chr(34), chr(34)*2)}"' for val in row) + '\n')
+                csv = csv_buffer.getvalue()
+            except Exception:
+                # Fallback: convert all to string dtype first
+                csv_df = search_results.astype(str)
+                csv_df.columns = csv_df.columns.astype(str)
+                csv = csv_df.to_csv(index=False)
+            if st.download_button(
+                label="📥 Download Results",
+                data=csv,
+                file_name=f"century_search_{search_term}_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            ):
+                log_user_event('search_results_downloaded', {'search_term': search_term, 'rows': len(search_results)})
+        else:
+            st.warning("No items found matching your search.")
+    
+    else:
+        # Initialize active tab in session state
+        if 'active_tab' not in st.session_state:
+            st.session_state.active_tab = 0
+        
+        # OVERVIEW METRICS
+        st.markdown("### 📊 Overview Metrics")
+        metrics = get_overview_metrics(status_threshold)
+        st.caption("Showing data for: All Shops")
+        
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
+        
+        with col1:
+            st.metric(
+                "Total Items",
+                f"{metrics['total_items']:,}",
+                help="Unique CENTURY items across all shops"
+            )
+        
+        with col2:
+            st.metric(
+                "Total Shops",
+                f"{metrics['total_shops']:,}",
+                help="Number of shops stocking CENTURY"
+            )
+        
+        with col3:
+            st.metric(
+                "⚠️ UnderStock",
+                f"{metrics['understock_items']:,}",
+                delta=f"-{(metrics['understock_items']/metrics['total_items']*100):.1f}%",
+                delta_color="inverse",
+                help=f"Items understocked in ≥{status_threshold}% of shops"
+            )
+            if st.button("📋 View Details", key="btn_understock", use_container_width=True):
+                log_user_event('understock_details_clicked')
+                st.session_state.active_tab = 1
+                st.rerun()
+        
+        with col4:
+            st.metric(
+                "📦 OverStock",
+                f"{metrics['overstock_items']:,}",
+                delta=f"+{(metrics['overstock_items']/metrics['total_items']*100):.1f}%",
+                delta_color="off",
+                help=f"Items overstocked in ≥{status_threshold}% of shops"
+            )
+            if st.button("📋 View Details", key="btn_overstock", use_container_width=True):
+                log_user_event('overstock_details_clicked')
+                st.session_state.active_tab = 2
+                st.rerun()
+        
+        with col5:
+            st.metric(
+                "✅ Balanced",
+                f"{metrics['balanced_items']:,}",
+                delta=f"{(metrics['balanced_items']/metrics['total_items']*100):.1f}%",
+                delta_color="normal",
+                help=f"Items balanced in ≥{status_threshold}% of shops"
+            )
+        
+        with col6:
+            mixed_count = metrics.get('mixed_items', 0)
+            st.metric(
+                "🔀 Mixed",
+                f"{mixed_count:,}",
+                delta=f"{(mixed_count/metrics['total_items']*100):.1f}%",
+                delta_color="off",
+                help=f"Items with no dominant status (<{status_threshold}% in any category)"
+            )
+        
+        st.markdown("---")
+        
+        col7, col8, col9, col10 = st.columns(4)
+        
+        with col7:
+            st.metric("Stock In Hand", f"{metrics['total_sih']:,}")
+        
+        with col8:
+            st.metric("Stock In Transit", f"{metrics['total_sit']:,}")
+        
+        with col9:
+            st.metric("21-Day Requirement", f"{metrics['total_requirement']:,}")
+        
+        with col10:
+            st.metric("Avg Rate of Sales", f"{metrics['avg_ros']:.2f}/day")
+        
+        st.markdown("---")
+        
+        # TAB SELECTION (using radio for programmatic control)
+        
+        def on_tab_change():
+            """Callback for tab selection changes"""
+            st.session_state.active_tab = tab_options.index(st.session_state.tab_selector)
+            log_user_event('tab_changed', {'selected_tab': st.session_state.tab_selector})
+        
+        selected_tab = st.radio(
+            "Select View:",
+            tab_options,
+            index=st.session_state.active_tab,
+            horizontal=True,
+            label_visibility="collapsed",
+            key="tab_selector",
+            on_change=on_tab_change
+        )
+        
+        st.markdown("---")
+        
+        # RENDER SELECTED TAB CONTENT
+        if selected_tab == "🏪 Shop Analysis":
+            st.markdown("### 🏪 Shop-wise Stock Status")
+            shop_filter_value = render_tab_shop_filter("🏪 Shop Analysis", "shop_analysis")
+            shop_df = get_shop_wise_summary(shop_filter=shop_filter_value)
+            
+            if not shop_df.empty:
+                # Shop selection for drill-down
+                if not shop_filter_value:
+                    selected_shop = st.selectbox(
+                        "Select Shop for Details",
+                        options=["All Shops"] + sorted(shop_df['shop_code'].unique().tolist())
+                    )
+
+                    if selected_shop != "All Shops":
+                        shop_df = shop_df[shop_df['shop_code'] == selected_shop]
+                
+                # Stacked bar chart
+                fig = go.Figure()
+                
+                fig.add_trace(go.Bar(
+                    name='UnderStock',
+                    x=shop_df['shop_code'],
+                    y=shop_df['understock'],
+                    marker_color=Config.COLORS['UnderStock']
+                ))
+                
+                fig.add_trace(go.Bar(
+                    name='OverStock',
+                    x=shop_df['shop_code'],
+                    y=shop_df['overstock'],
+                    marker_color=Config.COLORS['OverStock']
+                ))
+                
+                fig.add_trace(go.Bar(
+                    name='Balanced',
+                    x=shop_df['shop_code'],
+                    y=shop_df['balanced'],
+                    marker_color=Config.COLORS['Balanced']
+                ))
+                
+                fig.update_layout(
+                    barmode='stack',
+                    title="Stock Status by Shop",
+                    xaxis_title="Shop Code",
+                    yaxis_title="Number of Items",
+                    height=400,
+                    hovermode='x unified'
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+             # Data table
+                st.dataframe(shop_df, use_container_width=True, height=400, column_config=get_column_config())
+        
+        elif selected_tab == "⚠️ UnderStock Items":
+            title_col, filter_col = st.columns([3, 2])
+            with title_col:
+                st.markdown("### ⚠️ Top UnderStock Items")
+            with filter_col:
+                understock_shops = get_available_shops(view_name="⚠️ UnderStock Items")
+                understock_shop_options = ["All Shops"] + sorted([s for s in understock_shops if s])
+                selected_understock_shop = st.selectbox(
+                    "Shop Code",
+                    options=understock_shop_options,
+                    key="shop_code_filter_understock_inline",
+                    label_visibility="collapsed"
+                )
+            shop_filter_value = None if selected_understock_shop == "All Shops" else selected_understock_shop
+            understock_limit = st.selectbox(
+                "Rows to load",
+                options=[500, 1000, 2000, 5000, 10000],
+                index=2,
+                key="understock_rows_limit",
+                help="Lower row count loads faster"
+            )
+            understock_df = get_understock_items(limit=understock_limit, shop_filter=shop_filter_value)
+            
+            if not understock_df.empty:
+                # Enhanced column config with warehouse columns
+                wh_column_config = get_column_config()
+                wh_column_config.update({
+                    'total_wh_stock': st.column_config.NumberColumn(
+                        '🏭 Total WH Stock',
+                        help='Total warehouse stock available',
+                        format='%d',
+                        width='small'
+                    ),
+                    'wh_tema': st.column_config.NumberColumn(
+                        '🏭 WH Tema',
+                        help='Warehouse stock in Tema (TS)',
+                        format='%d',
+                        width='small'
+                    ),
+                    'wh_kumasi': st.column_config.NumberColumn(
+                        '🏭 WH Kumasi',
+                        help='Warehouse stock in Kumasi (KA)',
+                        format='%d',
+                        width='small'
+                    )
+                })
+                
+                st.dataframe(understock_df, use_container_width=True, height=500, column_config=wh_column_config)
+                
+                # Fix pandas CSV conversion: use robust method
+                try:
+                    csv_buffer = io.StringIO()
+                    for idx, row in understock_df.iterrows():
+                        if idx == 0:
+                            csv_buffer.write(','.join(str(col) for col in understock_df.columns) + '\n')
+                        csv_buffer.write(','.join(f'"{str(val).replace(chr(34), chr(34)*2)}"' for val in row) + '\n')
+                    csv = csv_buffer.getvalue()
+                except Exception:
+                    csv_df = understock_df.astype(str)
+                    csv_df.columns = csv_df.columns.astype(str)
+                    csv = csv_df.to_csv(index=False)
+                if st.download_button(
+                    label="📥 Download UnderStock Items",
+                    data=csv,
+                    file_name=f"understock_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv"
+                ):
+                    log_user_event('understock_downloaded', {'rows': len(understock_df)})
+            else:
+                st.success("No understock items found!")
+        
+        elif selected_tab == "📦 OverStock Items":
+            st.markdown("### 📦 Top OverStock Items")
+            shop_filter_value = render_tab_shop_filter("📦 OverStock Items", "overstock")
+            overstock_df = get_overstock_items(shop_filter=shop_filter_value)
+            
+            if not overstock_df.empty:
+                # Enhanced column config with warehouse columns
+                wh_column_config = get_column_config()
+                wh_column_config.update({
+                    'total_wh_stock': st.column_config.NumberColumn(
+                        '🏭 Total WH Stock',
+                        help='Total warehouse stock available',
+                        format='%d',
+                        width='small'
+                    ),
+                    'wh_tema': st.column_config.NumberColumn(
+                        '🏭 WH Tema',
+                        help='Warehouse stock in Tema (TS)',
+                        format='%d',
+                        width='small'
+                    ),
+                    'wh_kumasi': st.column_config.NumberColumn(
+                        '🏭 WH Kumasi',
+                        help='Warehouse stock in Kumasi (KA)',
+                        format='%d',
+                        width='small'
+                    )
+                })
+                
+                st.dataframe(overstock_df, use_container_width=True, height=500, column_config=wh_column_config)
+                
+                # Fix pandas CSV conversion: use robust method
+                try:
+                    csv_buffer = io.StringIO()
+                    for idx, row in overstock_df.iterrows():
+                        if idx == 0:
+                            csv_buffer.write(','.join(str(col) for col in overstock_df.columns) + '\n')
+                        csv_buffer.write(','.join(f'"{str(val).replace(chr(34), chr(34)*2)}"' for val in row) + '\n')
+                    csv = csv_buffer.getvalue()
+                except Exception:
+                    csv_df = overstock_df.astype(str)
+                    csv_df.columns = csv_df.columns.astype(str)
+                    csv = csv_df.to_csv(index=False)
+                if st.download_button(
+                    label="📥 Download OverStock Items",
+                    data=csv,
+                    file_name=f"overstock_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv"
+                ):
+                    log_user_event('overstock_downloaded', {'rows': len(overstock_df)})
+            else:
+                st.success("No overstock items found!")
+        
+        elif selected_tab == "🚨 Critical Items":
+            st.markdown("### 🚨 Critical Items (No Stock + High Demand)")
+            shop_filter_value = render_tab_shop_filter("🚨 Critical Items", "critical")
+            critical_df = get_critical_items(shop_filter=shop_filter_value)
+            
+            if not critical_df.empty:
+                st.warning(f"⚠️ **{len(critical_df)} critical items** require immediate attention!")
+                
+                # Enhanced column config with warehouse columns
+                wh_column_config = get_column_config()
+                wh_column_config.update({
+                    'total_wh_stock': st.column_config.NumberColumn(
+                        '🏭 Total WH Stock',
+                        help='Total warehouse stock available',
+                        format='%d',
+                        width='small'
+                    ),
+                    'wh_tema': st.column_config.NumberColumn(
+                        '🏭 WH Tema',
+                        help='Warehouse stock in Tema (TS)',
+                        format='%d',
+                        width='small'
+                    ),
+                    'wh_kumasi': st.column_config.NumberColumn(
+                        '🏭 WH Kumasi',
+                        help='Warehouse stock in Kumasi (KA)',
+                        format='%d',
+                        width='small'
+                    )
+                })
+                
+                st.dataframe(critical_df, use_container_width=True, height=500, column_config=wh_column_config)
+                
+                # Fix pandas CSV conversion: use robust method
+                try:
+                    csv_buffer = io.StringIO()
+                    for idx, row in critical_df.iterrows():
+                        if idx == 0:
+                            csv_buffer.write(','.join(str(col) for col in critical_df.columns) + '\n')
+                        csv_buffer.write(','.join(f'"{str(val).replace(chr(34), chr(34)*2)}"' for val in row) + '\n')
+                    csv = csv_buffer.getvalue()
+                except Exception:
+                    csv_df = critical_df.astype(str)
+                    csv_df.columns = csv_df.columns.astype(str)
+                    csv = csv_df.to_csv(index=False)
+                if st.download_button(
+                    label="📥 Download Critical Items",
+                    data=csv,
+                    file_name=f"critical_items_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv"
+                ):
+                    log_user_event('critical_items_downloaded', {'rows': len(critical_df)})
+            else:
+                st.success("No critical stock-outs with high demand!")
+        
+        elif selected_tab == "🐌 Slow Moving":
+            st.markdown("### 🐌 Slow Moving Items")
+            shop_filter_value = render_tab_shop_filter("🐌 Slow Moving", "slow_moving")
+            slow_df = get_slow_moving_items(shop_filter=shop_filter_value)
+            
+            if not slow_df.empty:
+                # Enhanced column config with warehouse columns
+                wh_column_config = get_column_config()
+                wh_column_config.update({
+                    'total_wh_stock': st.column_config.NumberColumn(
+                        '🏭 Total WH Stock',
+                        help='Total warehouse stock available',
+                        format='%d',
+                        width='small'
+                    ),
+                    'wh_tema': st.column_config.NumberColumn(
+                        '🏭 WH Tema',
+                        help='Warehouse stock in Tema (TS)',
+                        format='%d',
+                        width='small'
+                    ),
+                    'wh_kumasi': st.column_config.NumberColumn(
+                        '🏭 WH Kumasi',
+                        help='Warehouse stock in Kumasi (KA)',
+                        format='%d',
+                        width='small'
+                    )
+                })
+                
+                st.dataframe(slow_df, use_container_width=True, height=500, column_config=wh_column_config)
+                
+                # Fix pandas CSV conversion: use robust method
+                try:
+                    csv_buffer = io.StringIO()
+                    for idx, row in slow_df.iterrows():
+                        if idx == 0:
+                            csv_buffer.write(','.join(str(col) for col in slow_df.columns) + '\n')
+                        csv_buffer.write(','.join(f'"{str(val).replace(chr(34), chr(34)*2)}"' for val in row) + '\n')
+                    csv = csv_buffer.getvalue()
+                except Exception:
+                    csv_df = slow_df.astype(str)
+                    csv_df.columns = csv_df.columns.astype(str)
+                    csv = csv_df.to_csv(index=False)
+                if st.download_button(
+                    label="📥 Download Slow Moving Items",
+                    data=csv,
+                    file_name=f"slow_moving_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv"
+                ):
+                    log_user_event('slow_moving_downloaded', {'rows': len(slow_df)})
+            else:
+                st.info("No slow moving items found.")
+        
+        elif selected_tab == "📂 Department Analysis":
+            st.markdown("### 📂 Department Analysis")
+            shop_filter_value = render_tab_shop_filter("📂 Department Analysis", "department")
+            dept_df = get_department_analysis(shop_filter=shop_filter_value)
+            
+            if not dept_df.empty:
+                # Bar chart
+                fig = go.Figure()
+                
+                fig.add_trace(go.Bar(
+                    name='UnderStock',
+                    x=dept_df['dept'],
+                    y=dept_df['understock'],
+                    marker_color=Config.COLORS['UnderStock']
+                ))
+                
+                fig.add_trace(go.Bar(
+                    name='OverStock',
+                    x=dept_df['dept'],
+                    y=dept_df['overstock'],
+                    marker_color=Config.COLORS['OverStock']
+                ))
+                
+                fig.update_layout(
+                    barmode='group',
+                    title="Stock Issues by Department",
+                    xaxis_title="Department",
+                    yaxis_title="Number of Items",
+                    height=400,
+                    hovermode='x unified'
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                st.dataframe(dept_df, use_container_width=True, height=400, column_config=get_column_config())
+
+
+if __name__ == "__main__":
+    main()

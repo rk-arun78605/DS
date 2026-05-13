@@ -1,0 +1,83 @@
+{% if not edit_mode %}
+<div class="mb-3">
+  <label class="form-label">Employee ID *</label>
+  <input type="text" name="emp_id" class="form-control" placeholder="e.g. EMP001" required
+         maxlength="20" style="text-transform:uppercase;" />
+</div>
+{% endif %}
+
+<div class="mb-3">
+  <label class="form-label">Full Name *</label>
+  <input type="text" name="emp_name" id="{% if edit_mode %}e_emp_name{% endif %}"
+         class="form-control" placeholder="Full name" required />
+</div>
+
+<div class="row g-2 mb-3">
+  <div class="col-6">
+    <label class="form-label">Shop Code *</label>
+    <input type="text" name="shop_code" id="{% if edit_mode %}e_shop_code{% endif %}"
+           class="form-control" placeholder="e.g. SPN" required maxlength="20" />
+  </div>
+  <div class="col-6">
+    <label class="form-label">Shop Name *</label>
+    <input type="text" name="shop_name" id="{% if edit_mode %}e_shop_name{% endif %}"
+           class="form-control" placeholder="Shop / Branch name" required />
+  </div>
+</div>
+
+<div class="row g-2 mb-3">
+  <div class="col-6">
+    <label class="form-label">Role *</label>
+    <select name="role" id="{% if edit_mode %}e_role{% endif %}" class="form-select" required>
+      <option value="staff">👤  Staff</option>
+      <option value="supervisor">🏅  Supervisor / Manager</option>
+      <option value="management">💼  Management</option>
+    </select>
+  </div>
+  <div class="col-6">
+    <label class="form-label">Department</label>
+    <select name="department" id="{% if edit_mode %}e_department{% endif %}" class="form-select">
+      <option value="">— Select —</option>
+      <option value="Bakery">Bakery</option>
+      <option value="Kitchen">Kitchen</option>
+      <option value="RM">RM</option>
+    </select>
+  </div>
+</div>
+
+{% if edit_mode %}
+<div class="mb-3">
+  <label class="form-label">Status</label>
+  <select name="is_active" id="e_is_active" class="form-select">
+    <option value="true">Active</option>
+    <option value="false">Inactive</option>
+  </select>
+</div>
+{% endif %}
+
+<div class="mb-2">
+  <label class="form-label">
+    Password {% if edit_mode %}<span class="text-muted fw-400">(leave blank to keep current)</span>{% else %}*{% endif %}
+  </label>
+  <div class="position-relative">
+    <input type="password" name="password" id="{% if edit_mode %}e_password{% endif %}"
+           class="form-control" placeholder="{% if edit_mode %}New password (optional){% else %}Set a password{% endif %}"
+           {% if not edit_mode %}required{% endif %} minlength="6" />
+    <button type="button"
+            class="btn btn-sm position-absolute end-0 top-50 translate-middle-y me-2 bg-transparent border-0"
+            style="color:#6e7681;"
+            onclick="toggleUmPwd(this)">
+      <i class="bi bi-eye"></i>
+    </button>
+  </div>
+  <div class="text-muted mt-1" style="font-size:11px;">Minimum 6 characters</div>
+</div>
+
+<script>
+function toggleUmPwd(btn) {
+  const inp = btn.closest('.position-relative').querySelector('input');
+  const ico = btn.querySelector('i');
+  inp.type      = inp.type === 'password' ? 'text' : 'password';
+  ico.className = inp.type === 'password' ? 'bi bi-eye' : 'bi bi-eye-slash';
+}
+</script>

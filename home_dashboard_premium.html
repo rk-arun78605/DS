@@ -1,0 +1,1564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Melcom Analytics Hub - Product Dashboard</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #5B54FF;
+            --primary-dark: #4A45E0;
+            --primary-light: #7E75FF;
+            --secondary: #FF6B5B;
+            --success: #00D97E;
+            --warning: #FFB84D;
+            --info: #00B8E6;
+            --danger: #FF4757;
+            --dark-bg: #0F172A;
+            --card-bg: #1A2847;
+            --border-color: #2A3A5A;
+            --text-primary: #FFFFFF;
+            --text-secondary: #A0AEC0;
+            --text-tertiary: #64748B;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, var(--dark-bg) 0%, #15203E 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        /* ==================== HEADER ==================== */
+        .header {
+            background: linear-gradient(180deg, rgba(15, 23, 42, 0.8) 0%, rgba(15, 23, 42, 0.5) 100%);
+            border-bottom: 1px solid var(--border-color);
+            backdrop-filter: blur(10px);
+            padding: 1.5rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .brand-logo {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 1.2rem;
+        }
+
+        .brand-text {
+            font-family: 'Poppins', sans-serif;
+            font-weight: 700;
+            font-size: 1.4rem;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header-info {
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+            font-size: 0.875rem;
+        }
+
+        .header-stat {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--text-secondary);
+        }
+
+        /* ==================== NAVIGATION ==================== */
+        .nav-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .nav-tabs-new {
+            display: flex;
+            gap: 0;
+            border: none;
+            background: none;
+        }
+
+        .nav-tabs-new .nav-link {
+            border: none;
+            color: var(--text-secondary);
+            background: none;
+            padding: 1.25rem 2rem;
+            font-weight: 500;
+            position: relative;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+
+        .nav-tabs-new .nav-link:hover {
+            color: var(--primary);
+        }
+
+        .nav-tabs-new .nav-link.active {
+            color: var(--primary);
+        }
+
+        .nav-tabs-new .nav-link.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary) 0%, var(--primary-light) 100%);
+            border-radius: 3px 3px 0 0;
+        }
+
+        /* ==================== MAIN CONTENT ==================== */
+        .main-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Dashboard Tab Specific */
+        .dashboard-header {
+            margin-bottom: 3rem;
+        }
+
+        .dashboard-title {
+            font-family: 'Poppins', sans-serif;
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .dashboard-subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+
+        /* ==================== STAT CARDS ==================== */
+        .stat-card {
+            background: linear-gradient(135deg, rgba(91, 84, 255, 0.1) 0%, rgba(127, 117, 255, 0.05) 100%);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 2rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .stat-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-5px);
+            box-shadow: 0 10px 40px rgba(91, 84, 255, 0.2);
+        }
+
+        .stat-icon {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value {
+            font-family: 'Poppins', sans-serif;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-change {
+            font-size: 0.875rem;
+            color: var(--success);
+        }
+
+        /* ==================== DASHBOARD SECTION ==================== */
+        .section-title {
+            font-family: 'Poppins', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 2rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .section-title i {
+            color: var(--primary);
+        }
+
+        .dashboard-item {
+            background: linear-gradient(135deg, var(--card-bg) 0%, rgba(26, 40, 71, 0.8) 100%);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .dashboard-item:hover {
+            border-color: var(--primary);
+            box-shadow: 0 8px 24px rgba(91, 84, 255, 0.15);
+        }
+
+        .dashboard-info {
+            flex: 1;
+        }
+
+        .dashboard-name {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            font-size: 1.1rem;
+        }
+
+        .dashboard-meta {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            display: flex;
+            gap: 1rem;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: linear-gradient(135deg, rgba(0, 217, 126, 0.1) 0%, rgba(0, 184, 230, 0.05) 100%);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .status-online {
+            color: var(--success);
+            background: linear-gradient(135deg, rgba(0, 217, 126, 0.2) 0%, rgba(0, 217, 126, 0.1) 100%);
+            border-color: rgba(0, 217, 126, 0.3);
+        }
+
+        .status-offline {
+            color: var(--text-tertiary);
+            background: linear-gradient(135deg, rgba(100, 116, 139, 0.2) 0%, rgba(100, 116, 139, 0.1) 100%);
+            border-color: rgba(100, 116, 139, 0.3);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+        }
+
+        .status-dot.offline {
+            background: var(--text-tertiary);
+        }
+
+        .dashboard-action {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-icon:hover {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: white;
+        }
+
+        /* ==================== UPLOAD SECTION ==================== */
+        .upload-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+
+        .upload-config {
+            background: linear-gradient(135deg, var(--card-bg) 0%, rgba(26, 40, 71, 0.8) 100%);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 2rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+        }
+
+        .form-select, .form-control {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            padding: 0.75rem 1rem;
+            font-size: 1rem;
+            transition: all 0.2s ease;
+            width: 100%;
+        }
+
+        .form-select:focus, .form-control:focus {
+            border-color: var(--primary);
+            background: rgba(91, 84, 255, 0.1);
+            box-shadow: 0 0 0 3px rgba(91, 84, 255, 0.1);
+            outline: none;
+        }
+
+        .form-select option {
+            background: var(--card-bg);
+            color: var(--text-primary);
+        }
+
+        .radio-group {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .radio-option {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .radio-option:hover {
+            border-color: var(--primary);
+            background: rgba(91, 84, 255, 0.05);
+        }
+
+        .radio-option input[type="radio"] {
+            margin-right: 1rem;
+            cursor: pointer;
+            accent-color: var(--primary);
+        }
+
+        .upload-dropzone {
+            background: linear-gradient(135deg, rgba(91, 84, 255, 0.1) 0%, rgba(127, 117, 255, 0.05) 100%);
+            border: 2px dashed var(--primary);
+            border-radius: 12px;
+            padding: 3rem 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 300px;
+            margin-bottom: 1.5rem;
+        }
+
+        .upload-dropzone:hover {
+            background: linear-gradient(135deg, rgba(91, 84, 255, 0.15) 0%, rgba(127, 117, 255, 0.1) 100%);
+            border-color: var(--primary-light);
+        }
+
+        .upload-dropzone.dragover {
+            background: linear-gradient(135deg, rgba(91, 84, 255, 0.2) 0%, rgba(127, 117, 255, 0.15) 100%);
+            border-color: var(--primary-light);
+        }
+
+        .upload-icon {
+            font-size: 3.5rem;
+            color: var(--primary);
+            margin-bottom: 1rem;
+        }
+
+        .upload-text {
+            font-family: 'Poppins', sans-serif;
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .upload-subtext {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        .upload-info {
+            background: linear-gradient(135deg, var(--card-bg) 0%, rgba(26, 40, 71, 0.8) 100%);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 2rem;
+        }
+
+        .info-item {
+            margin-bottom: 1.5rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .info-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .info-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .info-value {
+            font-weight: 600;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        /* ==================== INDEX SECTION ==================== */
+        .index-container {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 2rem;
+        }
+
+        .index-controls {
+            background: linear-gradient(135deg, var(--card-bg) 0%, rgba(26, 40, 71, 0.8) 100%);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 2rem;
+            height: fit-content;
+        }
+
+        .index-table-wrapper {
+            background: linear-gradient(135deg, var(--card-bg) 0%, rgba(26, 40, 71, 0.8) 100%);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .index-table {
+            width: 100%;
+            color: var(--text-primary);
+        }
+
+        .index-table thead {
+            background: rgba(91, 84, 255, 0.1);
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .index-table th {
+            padding: 1rem;
+            font-weight: 600;
+            text-align: left;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .index-table td {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 0.95rem;
+        }
+
+        .index-table tbody tr:hover {
+            background: rgba(91, 84, 255, 0.05);
+        }
+
+        /* ==================== BUTTONS ==================== */
+        .btn-primary-custom {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+            color: white;
+            border: none;
+            padding: 0.75rem 2rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            margin-top: 1rem;
+        }
+
+        .btn-primary-custom:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(91, 84, 255, 0.3);
+        }
+
+        .btn-secondary-custom {
+            background: transparent;
+            color: var(--primary);
+            border: 1px solid var(--primary);
+            padding: 0.75rem 2rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-secondary-custom:hover {
+            background: var(--primary);
+            color: white;
+        }
+
+        /* ==================== PROGRESS BAR ==================== */
+        .progress-custom {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            height: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .progress-bar-custom {
+            background: linear-gradient(90deg, var(--primary) 0%, var(--primary-light) 100%);
+            height: 100%;
+            width: 0%;
+            animation: progress-animation 2s ease-in-out;
+        }
+
+        @keyframes progress-animation {
+            0% { width: 0%; }
+            100% { width: 100%; }
+        }
+
+        /* ==================== ALERT ==================== */
+        .alert-custom {
+            padding: 1rem;
+            border-radius: 8px;
+            border-left: 4px solid;
+            margin-bottom: 1rem;
+        }
+
+        .alert-success {
+            background: rgba(0, 217, 126, 0.1);
+            border-color: var(--success);
+            color: var(--success);
+        }
+
+        .alert-error {
+            background: rgba(255, 71, 87, 0.1);
+            border-color: var(--danger);
+            color: var(--danger);
+        }
+
+        /* ==================== RESPONSIVE ==================== */
+        @media (max-width: 1024px) {
+            .upload-container {
+                grid-template-columns: 1fr;
+            }
+
+            .index-container {
+                grid-template-columns: 1fr;
+            }
+
+            .dashboard-title {
+                font-size: 2rem;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header-content {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .nav-tabs-new .nav-link {
+                padding: 1rem 1.5rem;
+            }
+
+            .main-container {
+                padding: 1rem;
+            }
+
+            .dashboard-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+
+            .dashboard-action {
+                width: 100%;
+                justify-content: flex-end;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- HEADER -->
+    <div class="header">
+        <div class="header-content">
+            <div class="brand">
+                <div class="brand-logo">M</div>
+                <div class="brand-text">Melcom Analytics</div>
+            </div>
+            <div class="header-info">
+                <div class="header-stat">
+                    <i class="bi bi-server"></i>
+                    <span>Port: <strong id="serverPort">3307</strong></span>
+                </div>
+                <div class="header-stat">
+                    <i class="bi bi-clock"></i>
+                    <span id="currentTime">00:00:00</span>
+                </div>
+                <div class="header-stat">
+                    <i class="bi bi-broadcast"></i>
+                    <span id="ipAddress">Loading...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- NAVIGATION TABS -->
+    <div class="nav-container">
+        <ul class="nav nav-tabs-new" id="mainTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard" type="button">
+                    <i class="bi bi-speedometer2"></i> Dashboard
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload" type="button">
+                    <i class="bi bi-cloud-upload"></i> Upload Data
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="indexes-tab" data-bs-toggle="tab" data-bs-target="#indexes" type="button">
+                    <i class="bi bi-lightning-fill"></i> Index Manager
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="about-tab" data-bs-toggle="tab" data-bs-target="#about" type="button">
+                    <i class="bi bi-info-circle"></i> About
+                </button>
+            </li>
+        </ul>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="main-container">
+        <div class="tab-content" id="mainTabContent">
+
+            <!-- ===== DASHBOARD TAB ===== -->
+            <div class="tab-pane fade show active" id="dashboard" role="tabpanel">
+                <div class="dashboard-header">
+                    <h1 class="dashboard-title">Dashboard</h1>
+                    <p class="dashboard-subtitle">Real-time overview of your analytics infrastructure</p>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="row mb-4">
+                    <div class="col-md-3 col-sm-6 mb-3">
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="bi bi-speedometer2"></i>
+                            </div>
+                            <div class="stat-label">Server Status</div>
+                            <div class="stat-value">Online</div>
+                            <div class="stat-change">✓ All systems operational</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6 mb-3">
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="bi bi-diagram-3"></i>
+                            </div>
+                            <div class="stat-label">Active Dashboards</div>
+                            <div class="stat-value"><span id="onlineCount">0</span>/5</div>
+                            <div class="stat-change">Updated just now</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6 mb-3">
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="bi bi-database"></i>
+                            </div>
+                            <div class="stat-label">Database</div>
+                            <div class="stat-value">Connected</div>
+                            <div class="stat-change">PostgreSQL 3307</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6 mb-3">
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="bi bi-activity"></i>
+                            </div>
+                            <div class="stat-label">Uptime</div>
+                            <div class="stat-value" id="uptime">100%</div>
+                            <div class="stat-change">No recent issues</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dashboards Section -->
+                <h3 class="section-title">
+                    <i class="bi bi-window-stack"></i>
+                    Connected Dashboards
+                </h3>
+                <div class="row mb-4" id="dashboardsList">
+                    <!-- Populated by JavaScript -->
+                </div>
+
+                <!-- Quick Actions -->
+                <h3 class="section-title">
+                    <i class="bi bi-lightning-fill"></i>
+                    Quick Actions
+                </h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                    <button class="btn-primary-custom" onclick="refreshDashboards()">
+                        <i class="bi bi-arrow-clockwise"></i> Refresh Status
+                    </button>
+                    <button class="btn-primary-custom" onclick="openAllDashboards()">
+                        <i class="bi bi-window-stack"></i> Open All Dashboards
+                    </button>
+                    <button class="btn-primary-custom" onclick="copyIpToClipboard()">
+                        <i class="bi bi-clipboard"></i> Copy Network IP
+                    </button>
+                </div>
+            </div>
+
+            <!-- ===== UPLOAD DATA TAB ===== -->
+            <div class="tab-pane fade" id="upload" role="tabpanel">
+                <div class="dashboard-header">
+                    <h1 class="dashboard-title">Upload Data</h1>
+                    <p class="dashboard-subtitle">Import CSV files to populate your database tables</p>
+                </div>
+
+                <div class="upload-container">
+                    <!-- Left: Configuration -->
+                    <div class="upload-config">
+                        <h4 style="font-family: 'Poppins'; margin-bottom: 1.5rem; font-weight: 600;">Configuration</h4>
+
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="bi bi-funnel"></i> Report Category
+                            </label>
+                            <select class="form-select" id="uploadCategory" onchange="loadTablesForCategory()">
+                                <option value="">-- Loading categories --</option>
+                            </select>
+                            <small style="color: var(--text-secondary); display: block; margin-top: 0.5rem;">
+                                Filter tables by business domain
+                            </small>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="bi bi-table"></i> Select Target Table
+                            </label>
+                            <select class="form-select" id="uploadTable" onchange="updateUploadInfo()">
+                                <option value="">-- Select a category first --</option>
+                            </select>
+                            <small style="color: var(--text-secondary); display: block; margin-top: 0.5rem;">
+                                Choose the database table to upload data to
+                            </small>
+                        </div>
+
+                        <div class="alert-custom alert-success" style="margin-top: 1rem;">
+                            <i class="bi bi-info-circle"></i>
+                            <strong>Import Mode Auto-Detection</strong>
+                            <div style="margin-top: 0.5rem; font-size: 0.9rem;">
+                                Upload mode is automatically determined based on table configuration. Select a table to view its upload strategy.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Upload Area -->
+                    <div>
+                        <div class="upload-dropzone" id="dropZone" ondrop="handleFileDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" onclick="document.getElementById('fileInput').click()">
+                            <div class="upload-icon">
+                                <i class="bi bi-cloud-arrow-up"></i>
+                            </div>
+                            <div class="upload-text">Drop CSV file here</div>
+                            <div class="upload-subtext">or click to browse from your device</div>
+                            <input type="file" id="fileInput" accept=".csv" style="display: none;" onchange="handleFileSelect(event)">
+                        </div>
+
+                        <div id="fileInfo" style="display: none; margin-top: 1.5rem;">
+                            <div class="alert-custom alert-success">
+                                <strong style="display: block; margin-bottom: 0.5rem;">File Selected</strong>
+                                <span id="fileName"></span> • <span id="fileSize"></span>
+                            </div>
+                            
+                            <div id="autoDetectResult" style="display: none; margin-top: 1rem; padding: 1rem; background: rgba(91, 84, 255, 0.1); border: 1px solid var(--border-color); border-radius: 8px;">
+                                <strong style="display: block; margin-bottom: 0.5rem;">🎯 Auto-Detection Result</strong>
+                                <div id="detectionDetails" style="font-size: 0.9rem; color: var(--text-secondary);"></div>
+                            </div>
+                            
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
+                                <button class="btn-secondary-custom" onclick="autoDetectTable()" style="margin-top: 0;">
+                                    <i class="bi bi-magic"></i> Auto-Detect Table
+                                </button>
+                                <button class="btn-secondary-custom" onclick="cancelUpload()">
+                                    <i class="bi bi-x-circle"></i> Cancel
+                                </button>
+                            </div>
+                            
+                            <div class="progress-custom" style="margin-top: 1rem;">
+                                <div class="progress-bar-custom" id="uploadProgress"></div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr; gap: 1rem; margin-top: 1rem;">
+                                <button class="btn-primary-custom" onclick="uploadFile()" style="margin-top: 0;">
+                                    <i class="bi bi-check-circle"></i> Upload to Selected Table
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="upload-info" style="margin-top: 2rem; display: none;" id="uploadDetails">
+                            <h5 style="font-family: 'Poppins'; margin-bottom: 1rem; font-weight: 600;">Table Details</h5>
+                            <div id="tableDetails"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== INDEX MANAGER TAB ===== -->
+            <div class="tab-pane fade" id="indexes" role="tabpanel">
+                <div class="dashboard-header">
+                    <h1 class="dashboard-title">Index Manager</h1>
+                    <p class="dashboard-subtitle">Optimize database performance by managing indexes</p>
+                </div>
+
+                <div class="index-container">
+                    <!-- Controls -->
+                    <div class="index-controls">
+                        <h4 style="font-family: 'Poppins'; margin-bottom: 1.5rem; font-weight: 600;">
+                            <i class="bi bi-sliders"></i> Configuration
+                        </h4>
+
+                        <div class="form-group">
+                            <label class="form-label">Select Table</label>
+                            <select class="form-select" id="indexTable" onchange="loadIndexes()">
+                                <option value="">-- Choose a table --</option>
+                                <option value="sales_2024">Sales 2024</option>
+                                <option value="sales_2025">Sales 2025</option>
+                                <option value="sales_2026">Sales 2026</option>
+                                <option value="inventory_master">Inventory Master</option>
+                                <option value="sup_shop_grn">Shop GRN</option>
+                                <option value="barcode_item_master">Barcode Master</option>
+                            </select>
+                        </div>
+
+                        <button class="btn-primary-custom" onclick="analyzeTable()">
+                            <i class="bi bi-bar-chart"></i> Analyze Table
+                        </button>
+
+                        <hr style="border-color: var(--border-color); margin: 2rem 0;">
+
+                        <h4 style="font-family: 'Poppins'; margin-bottom: 1rem; font-weight: 600;">
+                            <i class="bi bi-plus-circle"></i> Create Index
+                        </h4>
+
+                        <div class="form-group">
+                            <label class="form-label">Index Name</label>
+                            <input type="text" class="form-control" id="indexName" placeholder="e.g., idx_sales_date">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Columns (comma-separated)</label>
+                            <input type="text" class="form-control" id="indexColumns" placeholder="e.g., date_invoice, shop_code">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="radio-option">
+                                <input type="checkbox" id="uniqueIndex">
+                                <div>
+                                    <strong>Create Unique Index</strong>
+                                </div>
+                            </label>
+                        </div>
+
+                        <button class="btn-primary-custom" onclick="createIndex()">
+                            <i class="bi bi-plus-circle"></i> Create Index
+                        </button>
+                    </div>
+
+                    <!-- Table -->
+                    <div class="index-table-wrapper">
+                        <table class="index-table">
+                            <thead>
+                                <tr>
+                                    <th>Index Name</th>
+                                    <th>Columns</th>
+                                    <th>Size</th>
+                                    <th>Scans</th>
+                                </tr>
+                            </thead>
+                            <tbody id="indexTableBody">
+                                <tr>
+                                    <td colspan="4" style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+                                        <i class="bi bi-inbox"></i><br>
+                                        Select a table to view indexes
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== ABOUT TAB ===== -->
+            <div class="tab-pane fade" id="about" role="tabpanel">
+                <div class="dashboard-header">
+                    <h1 class="dashboard-title">About Melcom Analytics</h1>
+                    <p class="dashboard-subtitle">Information about this dashboard and system</p>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-4">
+                        <div class="stat-card">
+                            <h5 style="font-family: 'Poppins'; font-weight: 600; margin-bottom: 1rem;">
+                                <i class="bi bi-info-circle"></i> Dashboard Info
+                            </h5>
+                            <div class="info-item">
+                                <div class="info-label">Version</div>
+                                <div class="info-value">3.0 - Premium</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Framework</div>
+                                <div class="info-value">Flask + Bootstrap 5</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Database</div>
+                                <div class="info-value">PostgreSQL 12+</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Build Date</div>
+                                <div class="info-value">February 2026</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6 mb-4">
+                        <div class="stat-card">
+                            <h5 style="font-family: 'Poppins'; font-weight: 600; margin-bottom: 1rem;">
+                                <i class="bi bi-lightning-fill"></i> Features
+                            </h5>
+                            <ul style="list-style: none; padding: 0;">
+                                <li style="margin-bottom: 0.75rem;"><i class="bi bi-check-circle" style="color: var(--success); margin-right: 0.5rem;"></i>Real-time Dashboard Monitoring</li>
+                                <li style="margin-bottom: 0.75rem;"><i class="bi bi-check-circle" style="color: var(--success); margin-right: 0.5rem;"></i>CSV Data Upload with Drag & Drop</li>
+                                <li style="margin-bottom: 0.75rem;"><i class="bi bi-check-circle" style="color: var(--success); margin-right: 0.5rem;"></i>Database Index Management</li>
+                                <li style="margin-bottom: 0.75rem;"><i class="bi bi-check-circle" style="color: var(--success); margin-right: 0.5rem;"></i>Professional UI/UX Design</li>
+                                <li style="margin-bottom: 0.75rem;"><i class="bi bi-check-circle" style="color: var(--success); margin-right: 0.5rem;"></i>Responsive Layout</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- SCRIPTS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const API_BASE = window.location.origin;
+        const DASHBOARDS = [
+            { name: 'MELCOM STAR', port: 8502 },
+            { name: 'KPI Dashboard', port: 8503 },
+            { name: 'NO_WH Inventory', port: 8504 },
+            { name: 'Barcode Matcher', port: 8505 },
+            { name: 'Century Penetration', port: 8506 }
+        ];
+
+        // ==================== INIT ====================
+        document.addEventListener('DOMContentLoaded', function() {
+            updateTime();
+            loadDashboardStatus();
+            getServerIP();
+            loadUploadCategories();  // Load categories for upload tab
+            setInterval(updateTime, 1000);
+            setInterval(loadDashboardStatus, 15000);
+        });
+
+        // ==================== TIME & IP ====================
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('currentTime').textContent = now.toLocaleTimeString();
+        }
+
+        async function getServerIP() {
+            try {
+                const response = await fetch(`${API_BASE}/api/server-ip`);
+                const data = await response.json();
+                document.getElementById('ipAddress').textContent = data.ip || 'Unknown';
+            } catch (error) {
+                console.error('Error fetching IP:', error);
+            }
+        }
+
+        // ==================== DASHBOARD STATUS ====================
+        async function loadDashboardStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/api/dashboards/status`);
+                const data = await response.json();
+                
+                document.getElementById('onlineCount').textContent = data.online_count;
+
+                let html = '';
+                for (const dashboard of DASHBOARDS) {
+                    const isOnline = data.dashboards[dashboard.name]?.online || false;
+                    const statusClass = isOnline ? 'status-online' : 'status-offline';
+                    const dotClass = isOnline ? '' : 'offline';
+                    
+                    html += `
+                        <div class="col-md-6 col-lg-4 mb-3">
+                            <div class="dashboard-item">
+                                <div class="dashboard-info">
+                                    <div class="dashboard-name">${dashboard.name}</div>
+                                    <div class="dashboard-meta">
+                                        <span>Port ${dashboard.port}</span>
+                                        <span class="status-badge ${statusClass}">
+                                            <span class="status-dot ${dotClass}"></span>
+                                            ${isOnline ? 'Online' : 'Offline'}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="dashboard-action">
+                                    ${isOnline ? `<a href="http://localhost:${dashboard.port}" target="_blank" class="btn-icon" title="Open Dashboard"><i class="bi bi-box-arrow-up-right"></i></a>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+                document.getElementById('dashboardsList').innerHTML = html;
+            } catch (error) {
+                console.error('Error loading dashboard status:', error);
+            }
+        }
+
+        // ==================== ACTIONS ====================
+        function refreshDashboards() {
+            loadDashboardStatus();
+            showNotification('Dashboard status refreshed!', 'success');
+        }
+
+        function openAllDashboards() {
+            DASHBOARDS.forEach(dashboard => {
+                window.open(`http://localhost:${dashboard.port}`, '_blank');
+            });
+        }
+
+        function copyIpToClipboard() {
+            const ip = document.getElementById('ipAddress').textContent;
+            if (ip !== 'Unknown') {
+                navigator.clipboard.writeText(`http://${ip}:8501`);
+                showNotification('Network URL copied to clipboard!', 'success');
+            }
+        }
+
+        // ==================== UPLOAD ====================
+        let categoriesData = null;
+        let tableConfigs = {};
+        let currentFile = null;  // Store current file for auto-detection
+
+        // Load categories on page load
+        async function loadUploadCategories() {
+            try {
+                const response = await fetch(`${API_BASE}/api/upload/categories`);
+                const data = await response.json();
+                categoriesData = data.categories;
+
+                const categorySelect = document.getElementById('uploadCategory');
+                categorySelect.innerHTML = '<option value="">-- Select category --</option>';
+                
+                // Add category options
+                const categories = ['All Tables', 'Century Penetration', 'Serial No Tracking', 'Others'];
+                categories.forEach(cat => {
+                    const option = document.createElement('option');
+                    option.value = cat;
+                    option.textContent = cat;
+                    if (cat === 'All Tables') option.selected = true;
+                    categorySelect.appendChild(option);
+                });
+
+                // Automatically load tables for "All Tables"
+                await loadTablesForCategory();
+            } catch (error) {
+                console.error('Error loading categories:', error);
+                showNotification('Failed to load categories', 'error');
+            }
+        }
+
+        // Load tables based on selected category
+        async function loadTablesForCategory() {
+            const category = document.getElementById('uploadCategory').value;
+            if (!category) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/upload/tables/${encodeURIComponent(category)}`);
+                const data = await response.json();
+                
+                tableConfigs = data.details;  // Store table configurations
+
+                const tableSelect = document.getElementById('uploadTable');
+                tableSelect.innerHTML = '<option value="">-- Choose a table --</option>';
+                
+                data.tables.forEach(tableName => {
+                    const option = document.createElement('option');
+                    option.value = tableName;
+                    const config = data.details[tableName];
+                    option.textContent = `${tableName} (${config.database}.${config.target_table})`;
+                    tableSelect.appendChild(option);
+                });
+
+                // Clear table details
+                document.getElementById('uploadDetails').style.display = 'none';
+            } catch (error) {
+                console.error('Error loading tables:', error);
+                showNotification('Failed to load tables', 'error');
+            }
+        }
+
+        // Update upload info when table is selected
+        async function updateUploadInfo() {
+            const tableName = document.getElementById('uploadTable').value;
+            if (!tableName) {
+                document.getElementById('uploadDetails').style.display = 'none';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/upload/table/${encodeURIComponent(tableName)}/config`);
+                const data = await response.json();
+                const config = data.config;
+
+                document.getElementById('uploadDetails').style.display = 'block';
+                
+                // Build detailed table information
+                const destInfo = config.destination_info;
+                const stats = config.current_stats || {};
+                const upload_mode = config.upload_mode || 'incremental';
+                const backup_table = config.backup_table || 'N/A';
+                const date_column = config.date_column || 'N/A';
+                const encoding = config.encoding || 'UTF-8';
+                const indexes_count = config.indexes ? config.indexes.length : 'N/A';
+                
+                // Determine process description based on upload mode
+                let processDesc = '';
+                if (upload_mode === 'truncate') {
+                    processDesc = 'Backup ALL → Truncate → Upload';
+                } else if (upload_mode === 'append') {
+                    processDesc = 'Upload → UPSERT → Auto-refresh main table';
+                } else { // incremental
+                    processDesc = 'Drop indexes → Backup NEW → Upload → Create indexes';
+                }
+                
+                let detailsHTML = `
+                    <div style="background: rgba(91, 84, 255, 0.1); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.5rem;">
+                        <h5 style="font-family: 'Poppins'; margin-bottom: 1.5rem; font-weight: 600; color: var(--text-primary);">
+                            <i class="bi bi-info-circle"></i> Table Information
+                        </h5>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                            <div>
+                                <div style="margin-bottom: 1rem;">
+                                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Table Name</div>
+                                    <div style="font-family: 'Courier New', monospace; padding: 0.5rem; background: rgba(0, 0, 0, 0.2); border-radius: 6px; font-size: 0.9rem;">
+                                        ${tableName}
+                                    </div>
+                                </div>
+                                
+                                <div style="margin-bottom: 1rem;">
+                                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Backup Table</div>
+                                    <div style="font-family: 'Courier New', monospace; padding: 0.5rem; background: rgba(0, 0, 0, 0.2); border-radius: 6px; font-size: 0.9rem;">
+                                        ${backup_table}
+                                    </div>
+                                </div>
+                                
+                                <div style="margin-bottom: 1rem;">
+                                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Date Column</div>
+                                    <div style="font-family: 'Courier New', monospace; padding: 0.5rem; background: rgba(0, 0, 0, 0.2); border-radius: 6px; font-size: 0.9rem;">
+                                        ${date_column}
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Upload Mode (Auto-Detected)</div>
+                                    <div style="padding: 0.5rem; background: rgba(91, 84, 255, 0.2); border-radius: 6px;">
+                                        <span style="font-weight: 600; font-size: 0.95rem;">${config.mode_badge}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <div style="margin-bottom: 1rem;">
+                                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Required Columns</div>
+                                    <div style="padding: 0.5rem; background: rgba(0, 0, 0, 0.2); border-radius: 6px; font-size: 1.1rem; font-weight: 600;">
+                                        ${config.columns.length}
+                                    </div>
+                                </div>
+                                
+                                <div style="margin-bottom: 1rem;">
+                                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Indexes</div>
+                                    <div style="padding: 0.5rem; background: rgba(0, 0, 0, 0.2); border-radius: 6px; font-size: 1.1rem; font-weight: 600;">
+                                        ${indexes_count}
+                                    </div>
+                                </div>
+                                
+                                <div style="margin-bottom: 1rem;">
+                                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Encoding</div>
+                                    <div style="font-family: 'Courier New', monospace; padding: 0.5rem; background: rgba(0, 0, 0, 0.2); border-radius: 6px; font-size: 0.9rem;">
+                                        ${encoding}
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Process</div>
+                                    <div style="padding: 0.5rem; background: rgba(0, 217, 126, 0.1); border: 1px solid rgba(0, 217, 126, 0.3); border-radius: 6px; font-size: 0.85rem; color: var(--success);">
+                                        ${processDesc}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <hr style="border: none; border-top: 1px solid var(--border-color); margin: 1.5rem 0;">
+                        
+                        <div style="margin-bottom: 1rem;">
+                            <strong style="color: var(--primary);">📍 Destination</strong>
+                            <div style="margin-top: 0.5rem; color: var(--text-secondary);">
+                                <div>Database: <strong style="color: var(--text-primary);">${destInfo.database}</strong></div>
+                                <div>Table: <strong style="color: var(--text-primary);">${destInfo.actual_table}</strong></div>
+                                <div style="margin-top: 0.5rem; font-size: 0.9rem; padding: 0.5rem; background: rgba(255, 184, 77, 0.1); border-radius: 6px; color: var(--warning);">
+                                    ${destInfo.note}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-bottom: 1rem;">
+                            <strong style="color: var(--success);">📊 Current Statistics</strong>
+                            <div style="margin-top: 0.5rem; color: var(--text-secondary);">
+                                <div>Total Rows: <strong style="color: var(--text-primary);">${stats.row_count ? stats.row_count.toLocaleString() : 'N/A'}</strong></div>
+                                ${stats.latest_date ? `<div>Latest Date: <strong style="color: var(--text-primary);">${stats.latest_date}</strong></div>` : ''}
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <strong style="color: var(--secondary);">📋 Expected Columns (${config.columns.length})</strong>
+                            <div style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-secondary); max-height: 150px; overflow-y: auto; padding: 0.75rem; background: rgba(0, 0, 0, 0.2); border-radius: 6px;">
+                                ${config.columns.join(', ')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('tableDetails').innerHTML = detailsHTML;
+            } catch (error) {
+                console.error('Error fetching table config:', error);
+                showNotification('Failed to load table configuration', 'error');
+            }
+        }
+
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            document.getElementById('dropZone').classList.add('dragover');
+        }
+
+        function handleDragLeave(e) {
+            document.getElementById('dropZone').classList.remove('dragover');
+        }
+
+        function handleFileDrop(e) {
+            e.preventDefault();
+            document.getElementById('dropZone').classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) showFile(files[0]);
+        }
+
+        function handleFileSelect(e) {
+            if (e.target.files.length > 0) showFile(e.target.files[0]);
+        }
+
+        function showFile(file) {
+            currentFile = file;  // Store file for auto-detection
+            document.getElementById('fileName').textContent = file.name;
+            document.getElementById('fileSize').textContent = (file.size / 1024).toFixed(2) + ' KB';
+            document.getElementById('fileInfo').style.display = 'block';
+            document.getElementById('autoDetectResult').style.display = 'none';  // Hide previous results
+        }
+
+        async function autoDetectTable() {
+            if (!currentFile) {
+                showNotification('No file selected', 'error');
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append('file', currentFile);
+
+                const response = await fetch(`${API_BASE}/api/upload/detect`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    const bestMatch = result.best_match;
+                    
+                    // Display detection result
+                    document.getElementById('autoDetectResult').style.display = 'block';
+                    
+                    let detailsHTML = `
+                        <div style="margin-bottom: 0.75rem;">
+                            <strong style="color: var(--success);">✅ Best Match: ${bestMatch.table_name}</strong>
+                            <div style="margin-top: 0.25rem; font-size: 0.85rem;">
+                                Match Score: <strong>${bestMatch.match_score}%</strong> | 
+                                Destination: <strong style="color: var(--primary);">${bestMatch.destination}</strong>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-bottom: 0.5rem;">
+                            <div style="font-size: 0.85rem;">
+                                Category: <strong>${bestMatch.category}</strong> | 
+                                Mode: <strong>${bestMatch.upload_mode}</strong>
+                            </div>
+                        </div>
+                        
+                        ${bestMatch.missing_columns.length > 0 ? `
+                            <div style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--warning);">
+                                ⚠️ Missing columns: ${bestMatch.missing_columns.join(', ')}
+                            </div>
+                        ` : ''}
+                        
+                        ${bestMatch.extra_columns.length > 0 ? `
+                            <div style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--info);">
+                                ℹ️ Extra columns (will be ignored): ${bestMatch.extra_columns.join(', ')}
+                            </div>
+                        ` : ''}
+                        
+                        ${bestMatch.is_perfect_match ? `
+                            <div style="margin-top: 0.5rem; padding: 0.5rem; background: rgba(0, 217, 126, 0.1); border-radius: 6px; font-size: 0.85rem; color: var(--success);">
+                                🎉 Perfect match! All columns align correctly.
+                            </div>
+                        ` : ''}
+                    `;
+                    
+                    document.getElementById('detectionDetails').innerHTML = detailsHTML;
+                    
+                    // Auto-select the detected table
+                    const categorySelect = document.getElementById('uploadCategory');
+                    const tableSelect = document.getElementById('uploadTable');
+                    
+                    // Find and select the category
+                    for (let i = 0; i < categorySelect.options.length; i++) {
+                        if (categorySelect.options[i].value === bestMatch.category || 
+                            (bestMatch.category === 'Others' && categorySelect.options[i].value === 'Others') ||
+                            categorySelect.options[i].value === 'All Tables') {
+                            
+                            // For Others category tables, set to All Tables to see all options
+                            if (bestMatch.category === 'Others') {
+                                categorySelect.value = 'All Tables';
+                            } else {
+                                categorySelect.value = bestMatch.category;
+                            }
+                            break;
+                        }
+                    }
+                    
+                    // Load tables for the selected category
+                    await loadTablesForCategory();
+                    
+                    // Select the detected table
+                    tableSelect.value = bestMatch.table_name;
+                    
+                    // Load table details
+                    await updateUploadInfo();
+                    
+                    showNotification(`Auto-detected: ${bestMatch.table_name} (${bestMatch.match_score}% match)`, 'success');
+                    
+                } else if (result.status === 'no_match') {
+                    document.getElementById('autoDetectResult').style.display = 'block';
+                    document.getElementById('detectionDetails').innerHTML = `
+                        <div style="color: var(--danger);">
+                            <strong>❌ No matching table found</strong>
+                        </div>
+                        <div style="margin-top: 0.5rem; font-size: 0.85rem;">
+                            CSV Columns (${result.csv_columns.length}): ${result.csv_columns.join(', ')}
+                        </div>
+                        <div style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">
+                            Please select a table manually and verify the column mapping.
+                        </div>
+                    `;
+                    showNotification('No matching table found - please select manually', 'error');
+                }
+                
+            } catch (error) {
+                console.error('Auto-detection error:', error);
+                showNotification('Auto-detection failed', 'error');
+            }
+        }
+
+        async function uploadFile() {
+            const tableName = document.getElementById('uploadTable').value;
+            const progressBar = document.getElementById('uploadProgress');
+
+            if (!currentFile) {
+                showNotification('Please select a CSV file first', 'error');
+                return;
+            }
+
+            if (!tableName) {
+                showNotification('Please select a target table first', 'error');
+                return;
+            }
+
+            try {
+                progressBar.style.width = '20%';
+
+                const formData = new FormData();
+                formData.append('file', currentFile);
+                formData.append('table', tableName);
+
+                progressBar.style.width = '45%';
+
+                const response = await fetch(`${API_BASE}/api/upload/process`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                progressBar.style.width = '80%';
+
+                const result = await response.json();
+
+                if (response.ok && result.status === 'success') {
+                    progressBar.style.width = '100%';
+
+                    showNotification(
+                        `Upload complete: ${Number(result.rows_uploaded || 0).toLocaleString()} rows to ${result.destination || result.actual_table}`,
+                        'success'
+                    );
+
+                    const details = document.getElementById('tableDetails');
+                    if (details && result.destination) {
+                        const extraInfo = `
+                            <div style="margin-top: 1rem; padding: 0.75rem; background: rgba(0, 217, 126, 0.08); border: 1px solid rgba(0, 217, 126, 0.3); border-radius: 8px;">
+                                <div><strong>Last Upload:</strong> ${Number(result.rows_uploaded || 0).toLocaleString()} rows</div>
+                                <div><strong>Destination:</strong> ${result.destination}</div>
+                                ${result.rows_backed_up != null ? `<div><strong>Rows Backed Up:</strong> ${Number(result.rows_backed_up).toLocaleString()}</div>` : ''}
+                            </div>
+                        `;
+                        details.innerHTML += extraInfo;
+                    }
+
+                    setTimeout(() => {
+                        progressBar.style.width = '0%';
+                    }, 1200);
+                } else {
+                    progressBar.style.width = '0%';
+                    showNotification(result.error || result.message || 'Upload failed', 'error');
+                }
+            } catch (error) {
+                console.error('Upload error:', error);
+                progressBar.style.width = '0%';
+                showNotification('Upload failed. Check API/server logs.', 'error');
+            }
+        }
+
+        function cancelUpload() {
+            document.getElementById('fileInfo').style.display = 'none';
+            document.getElementById('autoDetectResult').style.display = 'none';
+            document.getElementById('fileInput').value = '';
+            currentFile = null;
+        }
+
+        // ==================== INDEX ====================
+        function loadIndexes() {
+            showNotification('Index loading feature coming soon!', 'info');
+        }
+
+        function analyzeTable() {
+            showNotification('Table analysis feature coming soon!', 'info');
+        }
+
+        function createIndex() {
+            showNotification('Index creation feature coming soon!', 'info');
+        }
+
+        // ==================== NOTIFICATIONS ====================
+        function showNotification(message, type = 'info') {
+            const alertClass = `alert-${type === 'success' ? 'success' : 'error'}`;
+            const icon = type === 'success' ? 'check-circle' : 'info-circle';
+            const alertHTML = `
+                <div class="alert-custom ${alertClass}" style="position: fixed; top: 20px; right: 20px; z-index: 9999; max-width: 400px;">
+                    <i class="bi bi-${icon}"></i> ${message}
+                </div>
+            `;
+            const div = document.createElement('div');
+            div.innerHTML = alertHTML;
+            document.body.appendChild(div.firstElementChild);
+            setTimeout(() => div.firstElementChild?.remove(), 3000);
+        }
+    </script>
+</body>
+</html>
